@@ -161,14 +161,14 @@ export default function Files() {
       <div className="p-8">
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Files</h1>
+            <h1 className="text-3xl font-bold text-foreground">Archivos</h1>
             <p className="text-muted-foreground mt-2">
-              Manage your distributed files
+              Administra tus archivos distribuidos
             </p>
           </div>
           <Button onClick={() => setUploadDialogOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
-            Upload File
+            Subir Archivo
           </Button>
         </div>
 
@@ -198,7 +198,7 @@ export default function Files() {
         <Card>
           <CardHeader>
             <CardTitle className="text-foreground">
-              Files ({filteredFiles.length})
+              Archivos ({filteredFiles.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -214,11 +214,11 @@ export default function Files() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Path</TableHead>
-                    <TableHead>Size</TableHead>
+                    <TableHead>Ruta</TableHead>
+                    <TableHead>Tamaño</TableHead>
                     <TableHead>Chunks</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>Creado</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -272,16 +272,16 @@ export default function Files() {
         <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Upload File</DialogTitle>
+              <DialogTitle>Subir Archivo</DialogTitle>
               <DialogDescription>
-                Select a file and specify the remote path
+                Seleccione un archivo y especifica la ruta remota.
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 py-4">
               <div>
                 <label className="text-sm font-medium text-foreground mb-2 block">
-                  Local File
+                  Archivo Local
                 </label>
                 <Input
                   type="file"
@@ -292,7 +292,7 @@ export default function Files() {
 
               <div>
                 <label className="text-sm font-medium text-foreground mb-2 block">
-                  Remote Path
+                  Ruta Remota
                 </label>
                 <Input
                   placeholder="/path/to/file.txt"
@@ -305,7 +305,7 @@ export default function Files() {
               {uploading && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Uploading...</span>
+                    <span className="text-muted-foreground">Subiendo...</span>
                     <span className="text-foreground font-medium">
                       {uploadProgress.toFixed(0)}%
                     </span>
@@ -326,18 +326,18 @@ export default function Files() {
                 onClick={() => setUploadDialogOpen(false)}
                 disabled={uploading}
               >
-                Cancel
+                Cancelar
               </Button>
               <Button onClick={handleUpload} disabled={uploading || !selectedFile || !remotePath}>
                 {uploading ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Uploading...
+                    Subiendo...
                   </>
                 ) : (
                   <>
                     <Upload className="h-4 w-4 mr-2" />
-                    Upload
+                    Subir
                   </>
                 )}
               </Button>
@@ -349,22 +349,22 @@ export default function Files() {
         <Dialog open={infoDialogOpen} onOpenChange={setInfoDialogOpen}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>File Information</DialogTitle>
+              <DialogTitle>Información del Archivo</DialogTitle>
             </DialogHeader>
 
             {selectedFileInfo && (
               <div className="space-y-4 py-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Path</p>
+                    <p className="text-sm font-medium text-muted-foreground">Ruta</p>
                     <p className="text-sm text-foreground">{selectedFileInfo.path}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Size</p>
+                    <p className="text-sm font-medium text-muted-foreground">Tamaño</p>
                     <p className="text-sm text-foreground">{formatBytes(selectedFileInfo.size)}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Created</p>
+                    <p className="text-sm font-medium text-muted-foreground">Creado</p>
                     <p className="text-sm text-foreground">
                       {new Date(selectedFileInfo.created_at).toLocaleString()}
                     </p>
@@ -376,7 +376,7 @@ export default function Files() {
                 </div>
 
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-2">Chunks & Replicas</p>
+                  <p className="text-sm font-medium text-muted-foreground mb-2">Chunks y Réplicas</p>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {selectedFileInfo.chunks.map((chunk, idx) => (
                       <div key={chunk.chunk_id} className="p-3 bg-muted rounded-lg">
@@ -384,7 +384,7 @@ export default function Files() {
                           Chunk {idx} ({formatBytes(chunk.size)})
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {chunk.replicas.length} replicas
+                          {chunk.replicas.length} réplicas
                         </p>
                         <div className="mt-2 space-y-1">
                           {chunk.replicas.map((replica, ridx) => (

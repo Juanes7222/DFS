@@ -50,7 +50,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Database className="h-8 w-8 text-primary" />
             <div>
               <h1 className="text-xl font-bold text-foreground">{APP_TITLE}</h1>
-              <p className="text-xs text-muted-foreground">Distributed File System</p>
+              <p className="text-xs text-muted-foreground">Sistema de Archivos Distribuido</p>
             </div>
           </div>
         </div>
@@ -83,8 +83,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Footer */}
         <div className="p-4 border-t border-border">
           <div className="text-xs text-muted-foreground">
-            <p>Version 1.0.0</p>
-            <p className="mt-1">© 2024 DFS System</p>
+            <p>Versión 1.0.0</p>
+            <p className="mt-1">© 2024 Sistema DFS</p>
           </div>
         </div>
       </aside>

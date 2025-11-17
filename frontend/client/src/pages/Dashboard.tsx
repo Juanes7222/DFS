@@ -59,9 +59,9 @@ export default function Dashboard() {
     <DashboardLayout>
       <div className="p-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+          <h1 className="text-3xl font-bold text-foreground">Panel de Control</h1>
           <p className="text-muted-foreground mt-2">
-            Overview of your distributed file system
+            Descripción general del sistema de archivos distribuidos
           </p>
         </div>
 
@@ -72,7 +72,7 @@ export default function Dashboard() {
           </Alert>
         )}
 
-        {/* System Status */}
+        {/* Estado del Sistema */}
         <div className="mb-6">
           <Card>
             <CardContent className="pt-6">
@@ -81,9 +81,9 @@ export default function Dashboard() {
                   <>
                     <CheckCircle2 className="h-6 w-6 text-accent" />
                     <div>
-                      <p className="font-semibold text-foreground">System Healthy</p>
+                      <p className="font-semibold text-foreground">Sistema en Buen Estado</p>
                       <p className="text-sm text-muted-foreground">
-                        All systems operational
+                        Todos los nodos están operativos.
                       </p>
                     </div>
                   </>
@@ -91,9 +91,9 @@ export default function Dashboard() {
                   <>
                     <AlertCircle className="h-6 w-6 text-destructive" />
                     <div>
-                      <p className="font-semibold text-foreground">System Degraded</p>
+                      <p className="font-semibold text-foreground">Sistema Degradado</p>
                       <p className="text-sm text-muted-foreground">
-                        Some nodes may be unavailable
+                        Algunos nodos pueden no estar disponibles.
                       </p>
                     </div>
                   </>
@@ -103,29 +103,29 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Stats Grid */}
+        {/* Cuadro de Estadísticas */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {/* Total Nodes */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Nodes
+                Nodos Totales
               </CardTitle>
               <HardDrive className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-foreground">{nodes.length}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                {activeNodes.length} active
+                {activeNodes.length} activo
               </p>
             </CardContent>
           </Card>
 
-          {/* Total Files */}
+          {/* Archivos Totales */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Files
+                Archivos Totales
               </CardTitle>
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
@@ -137,11 +137,11 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          {/* Storage Used */}
+          {/* Almacenamiento Usado */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Storage Used
+                Almacenamiento Usado
               </CardTitle>
               <Database className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
@@ -150,16 +150,16 @@ export default function Dashboard() {
                 {formatBytes(usedStorage)}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                of {formatBytes(totalStorage)}
+                de {formatBytes(totalStorage)}
               </p>
             </CardContent>
           </Card>
 
-          {/* Replication Factor */}
+          {/* Factor de Replicación */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Replication
+                Replicación
               </CardTitle>
               <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
@@ -168,24 +168,24 @@ export default function Dashboard() {
                 {health?.details?.replication_factor || 3}x
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Redundancy factor
+                Factor de redundancia
               </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Nodes Overview */}
+        {/* Resumen de los Nodos */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Active Nodes */}
+          {/* Nodos Activos */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-foreground">Active Nodes</CardTitle>
+              <CardTitle className="text-foreground">Nodos Activos</CardTitle>
             </CardHeader>
             <CardContent>
               {loading ? (
-                <p className="text-muted-foreground">Loading...</p>
+                <p className="text-muted-foreground">Cargando...</p>
               ) : activeNodes.length === 0 ? (
-                <p className="text-muted-foreground">No active nodes</p>
+                <p className="text-muted-foreground">No hay nodos activos</p>
               ) : (
                 <div className="space-y-3">
                   {activeNodes.slice(0, 5).map((node) => (
@@ -206,7 +206,7 @@ export default function Dashboard() {
                         <p className="text-sm font-medium text-foreground">
                           {formatBytes(node.free_space)}
                         </p>
-                        <p className="text-xs text-muted-foreground">free</p>
+                        <p className="text-xs text-muted-foreground">disponible</p>
                       </div>
                     </div>
                   ))}
@@ -215,16 +215,16 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          {/* Recent Files */}
+          {/* Archivos Recientes */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-foreground">Recent Files</CardTitle>
+              <CardTitle className="text-foreground">Archivos Recientes</CardTitle>
             </CardHeader>
             <CardContent>
               {loading ? (
-                <p className="text-muted-foreground">Loading...</p>
+                <p className="text-muted-foreground">Cargando...</p>
               ) : files.length === 0 ? (
-                <p className="text-muted-foreground">No files uploaded yet</p>
+                <p className="text-muted-foreground">Aún no se han subido archivos</p>
               ) : (
                 <div className="space-y-3">
                   {files.slice(0, 5).map((file) => (

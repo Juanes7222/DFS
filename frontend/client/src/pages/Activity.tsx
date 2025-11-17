@@ -8,27 +8,27 @@ export default function Activity() {
     <DashboardLayout>
       <div className="p-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Activity</h1>
+          <h1 className="text-3xl font-bold text-foreground">Actividad</h1>
           <p className="text-muted-foreground mt-2">
-            System activity and logs
+            Actividad y registros del sistema
           </p>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-foreground">Coming Soon</CardTitle>
+            <CardTitle className="text-foreground">Próximamente</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col items-center justify-center py-12">
               <ActivityIcon className="h-16 w-16 text-muted-foreground mb-4" />
               <p className="text-muted-foreground text-center">
-                Activity monitoring and logging features are coming soon.
+                Las funciones de monitoreo y registro de actividades estarán disponibles próximamente.
               </p>
               <button
                 onClick={() => toast.info("Feature coming soon")}
                 className="mt-4 text-primary hover:underline"
               >
-                Learn more
+                Más información
               </button>
             </div>
           </CardContent>
