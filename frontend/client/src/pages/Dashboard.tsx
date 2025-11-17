@@ -61,7 +61,7 @@ export default function Dashboard() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground">Panel de Control</h1>
           <p className="text-muted-foreground mt-2">
-            Descripción general del sistema de archivos distribuidos
+            Resumen del sistema de archivos distribuidos
           </p>
         </div>
 
@@ -116,7 +116,7 @@ export default function Dashboard() {
             <CardContent>
               <div className="text-2xl font-bold text-foreground">{nodes.length}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                {activeNodes.length} activo
+                {activeNodes.length} activo(s)
               </p>
             </CardContent>
           </Card>

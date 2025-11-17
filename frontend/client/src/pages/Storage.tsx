@@ -8,27 +8,27 @@ export default function Storage() {
     <DashboardLayout>
       <div className="p-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Storage</h1>
+          <h1 className="text-3xl font-bold text-foreground">Almacenamiento</h1>
           <p className="text-muted-foreground mt-2">
-            Storage analytics and management
+            Análisis y gestión del almacenamiento
           </p>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-foreground">Coming Soon</CardTitle>
+            <CardTitle className="text-foreground">Próximamente</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col items-center justify-center py-12">
               <Database className="h-16 w-16 text-muted-foreground mb-4" />
               <p className="text-muted-foreground text-center">
-                Storage analytics and management features are coming soon.
+                Las funciones de análisis y gestión del almacenamiento estarán disponibles próximamente.
               </p>
               <button
                 onClick={() => toast.info("Feature coming soon")}
                 className="mt-4 text-primary hover:underline"
               >
-                Learn more
+                Más información
               </button>
             </div>
           </CardContent>

@@ -81,9 +81,9 @@ export default function Nodes() {
     <DashboardLayout>
       <div className="p-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Nodes</h1>
+          <h1 className="text-3xl font-bold text-foreground">Nodos</h1>
           <p className="text-muted-foreground mt-2">
-            Storage nodes in your cluster
+            Nodos de almacenamiento en su clúster
           </p>
         </div>
 
@@ -99,14 +99,14 @@ export default function Nodes() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Nodes
+                Nodos Totales
               </CardTitle>
               <HardDrive className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-foreground">{nodes.length}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                {activeNodes.length} active
+                {activeNodes.length} activo(s)
               </p>
             </CardContent>
           </Card>
@@ -114,7 +114,7 @@ export default function Nodes() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Storage
+                Almacenamiento Total
               </CardTitle>
               <HardDrive className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
@@ -123,7 +123,7 @@ export default function Nodes() {
                 {formatBytes(totalStorage)}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                {formatBytes(usedStorage)} used
+                {formatBytes(usedStorage)} usados
               </p>
             </CardContent>
           </Card>
@@ -131,7 +131,7 @@ export default function Nodes() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Storage Usage
+                Uso del Almacenamiento
               </CardTitle>
               <HardDrive className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
@@ -152,7 +152,7 @@ export default function Nodes() {
         {/* Nodes Table */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-foreground">Nodes ({nodes.length})</CardTitle>
+            <CardTitle className="text-foreground">Nodos: ({nodes.length})</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -161,20 +161,20 @@ export default function Nodes() {
               </div>
             ) : nodes.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                No nodes registered
+                No hay nodos registrados
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Node ID</TableHead>
+                    <TableHead>ID del Nodo</TableHead>
                     <TableHead>Host</TableHead>
-                    <TableHead>Port</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Free Space</TableHead>
-                    <TableHead>Total Space</TableHead>
+                    <TableHead>Puerto</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Espacio Disponible</TableHead>
+                    <TableHead>Espacio Total</TableHead>
                     <TableHead>Chunks</TableHead>
-                    <TableHead>Last Heartbeat</TableHead>
+                    <TableHead>Última Comunicación</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

@@ -11,27 +11,27 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   {
-    title: "Dashboard",
+    title: "Panel de Control",
     href: "/",
     icon: Home,
   },
   {
-    title: "Files",
+    title: "Archivos",
     href: "/files",
     icon: FileText,
   },
   {
-    title: "Nodes",
+    title: "Nodos",
     href: "/nodes",
     icon: HardDrive,
   },
   {
-    title: "Storage",
+    title: "Almacenamiento",
     href: "/storage",
     icon: Database,
   },
   {
-    title: "Activity",
+    title: "Actividad",
     href: "/activity",
     icon: Activity,
   },
