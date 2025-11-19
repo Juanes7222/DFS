@@ -16,8 +16,9 @@ foreach ($dir in $dataDirs) {
 }
 
 # Rutas base - ajustar según la estructura real del proyecto
-$metadataPath = Join-Path $scriptDir "metadata-service"
-$datanodePath = Join-Path $scriptDir "datanode"
+$basePath = Split-Path -Parent $scriptDir
+$metadataPath = Join-Path $basePath "backend/metadata-service"
+$datanodePath = Join-Path $basePath "backend/datanode"
 
 # Verificar que las rutas existen
 if (-not (Test-Path $metadataPath)) {
