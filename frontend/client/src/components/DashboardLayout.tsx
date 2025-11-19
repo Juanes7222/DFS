@@ -80,13 +80,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-border">
-          <div className="text-xs text-muted-foreground">
-            <p>Versión 1.0.0</p>
-            <p className="mt-1">© 2024 Sistema DFS</p>
-          </div>
-        </div>
       </aside>
 
       {/* Main Content */}
