@@ -34,10 +34,10 @@ if (Get-Command docker-compose -ErrorAction SilentlyContinue) {
                 Write-Host "Servicios Docker detenidos" -ForegroundColor Green
                 $processesStopped++
             } else {
-                Write-Host "⚠️  No se pudieron detener algunos servicios Docker" -ForegroundColor Yellow
+                Write-Host " No se pudieron detener algunos servicios Docker" -ForegroundColor Yellow
             }
         } else {
-            Write-Host "ℹ️  No hay servicios Docker en ejecución" -ForegroundColor Gray
+            Write-Host "No hay servicios Docker en ejecución" -ForegroundColor Gray
         }
     }
 }
@@ -73,7 +73,7 @@ if (Test-Path $pidsFile) {
                 $processesStopped++
             }
             catch {
-                Write-Host "⚠️  $service (PID: $processId) no encontrado o ya detenido" -ForegroundColor Gray
+                Write-Host "$service (PID: $processId) no encontrado o ya detenido" -ForegroundColor Gray
             }
         }
     }
@@ -82,7 +82,7 @@ if (Test-Path $pidsFile) {
     Write-Host "Archivo de PIDs removido" -ForegroundColor Green
 }
 else {
-    Write-Host "ℹ️  Archivo de PIDs no encontrado en: $pidsFile" -ForegroundColor Gray
+    Write-Host "Archivo de PIDs no encontrado en: $pidsFile" -ForegroundColor Gray
 }
 
 # Buscar procesos residuales de backend
@@ -118,7 +118,7 @@ if ($backendProcesses) {
             }
         }
     } else {
-        Write-Host "ℹ️  Procesos no detenidos por el usuario" -ForegroundColor Yellow
+        Write-Host "Procesos no detenidos por el usuario" -ForegroundColor Yellow
     }
 } else {
     Write-Host "No se encontraron procesos backend residuales" -ForegroundColor Green
@@ -126,7 +126,7 @@ if ($backendProcesses) {
 
 # Limpiar variables de entorno
 Write-Host ""
-Write-Host "🧹 Limpiando variables de entorno..." -ForegroundColor Yellow
+Write-Host "Limpiando variables de entorno..." -ForegroundColor Yellow
 
 $envVars = @(
     "DFS_METADATA_HOST",
