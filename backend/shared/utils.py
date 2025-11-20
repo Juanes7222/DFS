@@ -23,11 +23,12 @@ def calculate_file_checksum(file_obj: BinaryIO, chunk_size: int = 8192) -> str:
 
 def format_bytes(bytes_value: int) -> str:
     """Formatea bytes en formato legible"""
+    value = float(bytes_value)  # Convierte a float para evitar error de Pylance
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-        if bytes_value < 1024.0:
-            return f"{bytes_value:.2f} {unit}"
-        bytes_value /= 1024.0
-    return f"{bytes_value:.2f} PB"
+        if value < 1024.0:
+            return f"{value:.2f} {unit}"
+        value /= 1024.0
+    return f"{value:.2f} PB"
 
 
 def split_into_chunks(file_path: str, chunk_size: int):
