@@ -10,8 +10,8 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 from uuid import UUID
 
-from backend.core.exceptions import DFSLeaseConflictError
-from backend.shared.models import (
+from core.exceptions import DFSLeaseConflictError
+from shared.models import (
     LeaseResponse,
 )  # asumes que LeaseResponse existe y está tipado
 

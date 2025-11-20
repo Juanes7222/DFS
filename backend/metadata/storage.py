@@ -11,9 +11,9 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
 
-from backend.core.config import config
-from backend.core.exceptions import DFSMetadataError
-from backend.shared.models import (
+from core.config import config
+from core.exceptions import DFSMetadataError
+from shared.models import (
     ChunkEntry,
     ChunkState,
     ChunkTarget,
@@ -24,7 +24,7 @@ from backend.shared.models import (
     NodeState,
     ReplicaInfo,
 )
-from backend.shared.protocols import MetadataStorageProtocol
+from shared.protocols import MetadataStorageProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -381,42 +381,42 @@ class MetadataStorage(MetadataStorageProtocol):
 
     async def get_node(self, node_id: str) -> Optional[NodeInfo]:
         """Obtiene información de un nodo."""
-        async with self.lock:
-            row = self._conn.execute(
-                "SELECT * FROM nodes WHERE node_id = ?", (node_id,)
-            ).fetchone()
+        # Lectura simple sin lock
+        row = self._conn.execute(
+            "SELECT * FROM nodes WHERE node_id = ?", (node_id,)
+        ).fetchone()
 
-            if not row:
-                return None
+        if not row:
+            return None
 
-            return self._row_to_node_info(row)
+        return self._row_to_node_info(row)
 
     async def list_nodes(self) -> List[NodeInfo]:
         """Lista todos los nodos."""
-        async with self.lock:
-            rows = self._conn.execute(
-                "SELECT * FROM nodes ORDER BY last_heartbeat DESC"
-            ).fetchall()
+        # Lectura simple sin lock (SQLite soporta lecturas concurrentes)
+        rows = self._conn.execute(
+            "SELECT * FROM nodes ORDER BY last_heartbeat DESC"
+        ).fetchall()
 
-            return [self._row_to_node_info(row) for row in rows]
+        return [self._row_to_node_info(row) for row in rows]
 
     async def get_active_nodes(self) -> List[NodeInfo]:
         """Obtiene nodos activos."""
-        async with self.lock:
-            threshold = (
-                datetime.utcnow() - timedelta(seconds=config.node_timeout)
-            ).isoformat()
+        # Lectura simple sin lock
+        threshold = (
+            datetime.utcnow() - timedelta(seconds=config.node_timeout)
+        ).isoformat()
 
-            rows = self._conn.execute(
-                """
-                SELECT * FROM nodes 
-                WHERE state = ? AND last_heartbeat > ?
-                ORDER BY free_space DESC
-                """,
-                (NodeState.ACTIVE.value, threshold),
-            ).fetchall()
+        rows = self._conn.execute(
+            """
+            SELECT * FROM nodes 
+            WHERE state = ? AND last_heartbeat > ?
+            ORDER BY free_space DESC
+            """,
+            (NodeState.ACTIVE.value, threshold),
+        ).fetchall()
 
-            return [self._row_to_node_info(row) for row in rows]
+        return [self._row_to_node_info(row) for row in rows]
 
     async def acquire_lease(
         self, path: str, operation: str, timeout_seconds: int
