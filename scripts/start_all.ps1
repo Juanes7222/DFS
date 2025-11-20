@@ -1,22 +1,23 @@
 #!/usr/bin/env pwsh
-# Script para iniciar todo el sistema DFS - Version Mejorada
+param(
+    [int]$nodes = 3
+)
 
+# Script para iniciar todo el sistema DFS - Version parametrizable
 $ErrorActionPreference = "Continue"
 
-Write-Host "=== Iniciando Sistema DFS ===" -ForegroundColor Cyan
+Write-Host "=== Iniciando Sistema DFS ==="
 
 # Obtener el directorio donde esta el script
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Split-Path -Parent $scriptDir
 $backendRoot = Join-Path $projectRoot "backend"
 
-# Verificar estructura del proyecto
 if (-not (Test-Path $backendRoot)) {
     Write-Host "ERROR: No se encuentra el directorio backend en: $backendRoot" -ForegroundColor Red
     exit 1
 }
 
-# Funcion para encontrar Python
 function Get-PythonCommand {
     # Primero buscar en el venv del proyecto
     $venvPython = Join-Path $backendRoot ".venv\Scripts\python.exe"
@@ -27,13 +28,10 @@ function Get-PythonCommand {
                 Write-Host "OK Encontrado en venv: $venvPython" -ForegroundColor Green
                 return $venvPython
             }
-        } catch {
-            # Continuar buscando
-        }
+        } catch { }
     }
-    
+
     $pythonCommands = @("python", "py", "python3")
-    
     foreach ($cmd in $pythonCommands) {
         try {
             $pythonPath = Get-Command $cmd -ErrorAction Stop | Select-Object -ExpandProperty Source
@@ -42,11 +40,9 @@ function Get-PythonCommand {
                 Write-Host "OK Encontrado: $pythonPath" -ForegroundColor Green
                 return $pythonPath
             }
-        } catch {
-            continue
-        }
+        } catch { continue }
     }
-    
+
     if ($IsWindows -or $env:OS -match "Windows") {
         $commonPaths = @(
             "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
@@ -56,7 +52,6 @@ function Get-PythonCommand {
             "$env:ProgramFiles\Python310\python.exe",
             "$env:ProgramFiles\Python39\python.exe"
         )
-        
         foreach ($path in $commonPaths) {
             if (Test-Path $path) {
                 Write-Host "OK Encontrado en ruta comun: $path" -ForegroundColor Green
@@ -64,89 +59,60 @@ function Get-PythonCommand {
             }
         }
     }
-    
+
     return $null
 }
 
-# Funcion para verificar si un puerto esta abierto
 function Test-Port {
-    param(
-        [string]$HostName,
-        [int]$Port,
-        [int]$TimeoutMs = 1000
-    )
-    
+    param([string]$HostName, [int]$Port, [int]$TimeoutMs = 1000)
     try {
         $tcpClient = New-Object System.Net.Sockets.TcpClient
         $connect = $tcpClient.BeginConnect($HostName, $Port, $null, $null)
         $wait = $connect.AsyncWaitHandle.WaitOne($TimeoutMs, $false)
-        
-        if ($wait) {
-            $tcpClient.EndConnect($connect)
-            $tcpClient.Close()
-            return $true
-        } else {
-            $tcpClient.Close()
-            return $false
-        }
-    } catch {
-        return $false
-    }
+        if ($wait) { $tcpClient.EndConnect($connect); $tcpClient.Close(); return $true }
+        $tcpClient.Close(); return $false
+    } catch { return $false }
 }
 
 Write-Host "Buscando Python..." -ForegroundColor Yellow
 $pythonCmd = Get-PythonCommand
-
 if (-not $pythonCmd) {
     Write-Host "ERROR: No se pudo encontrar Python instalado" -ForegroundColor Red
-    Write-Host "Por favor instale Python 3.8+ desde https://python.org" -ForegroundColor Yellow
     exit 1
 }
-
 Write-Host "Usando Python: $pythonCmd" -ForegroundColor Cyan
 
-# Verificar version Python
 try {
     $versionInfo = & $pythonCmd -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
     Write-Host "Version de Python: $versionInfo" -ForegroundColor Green
-    
     $majorVersion = [int]($versionInfo.Split('.')[0])
     $minorVersion = [int]($versionInfo.Split('.')[1])
-    
     if ($majorVersion -lt 3 -or ($majorVersion -eq 3 -and $minorVersion -lt 8)) {
         Write-Host "ERROR: Se requiere Python 3.8 o superior" -ForegroundColor Red
         exit 1
     }
-    
     if ($majorVersion -eq 3 -and $minorVersion -gt 11) {
         Write-Host "ADVERTENCIA: Python $versionInfo puede tener compatibilidad limitada" -ForegroundColor Yellow
-        Write-Host "Se recomienda Python 3.8 a 3.11" -ForegroundColor Yellow
     }
 } catch {
     Write-Host "ERROR: No se pudo verificar la version de Python" -ForegroundColor Red
     exit 1
 }
 
-# Crear directorios de datos
+# Temp dir y directorios base
 $tempDir = if ($IsWindows -or $env:OS -match "Windows") { $env:TEMP } else { "/tmp" }
-$dataDirs = @(
-    "$tempDir/dfs-data-node1",
-    "$tempDir/dfs-data-node2", 
-    "$tempDir/dfs-data-node3",
-    "$tempDir/dfs-metadata"
-)
+$metadataDir = Join-Path $tempDir "dfs-metadata"
+if (-not (Test-Path $metadataDir)) { New-Item -Path $metadataDir -ItemType Directory -Force | Out-Null }
 
+# Crear directorios por defecto para nodos (se crearán también por nodo en el loop)
 Write-Host "Creando directorios de datos..." -ForegroundColor Yellow
-foreach ($dir in $dataDirs) {
-    if (-not (Test-Path $dir)) {
-        Write-Host "  Creando: $dir" -ForegroundColor Gray
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
-    } else {
-        Write-Host "  Ya existe: $dir" -ForegroundColor Gray
-    }
+for ($i = 1; $i -le $nodes; $i++) {
+    $d = Join-Path $tempDir ("dfs-data-node{0}" -f $i)
+    if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null; Write-Host "  Creando: $d" } else { Write-Host "  Ya existe: $d" }
 }
+Write-Host "  Ya existe/creado: $metadataDir"
 
-# Agregar backend al PYTHONPATH
+# PYTHONPATH
 $env:PYTHONPATH = "$backendRoot$([System.IO.Path]::PathSeparator)$env:PYTHONPATH"
 
 # Verificar import backend
@@ -158,82 +124,58 @@ try {
     exit 1
 }
 
-# Variables Metadata
+# Variables Metadata (configuración fija)
 $env:DFS_METADATA_HOST = "0.0.0.0"
 $env:DFS_METADATA_PORT = "8000"
-$env:DFS_DB_PATH = "$tempDir/dfs-metadata/dfs_metadata.db"
+$env:DFS_DB_PATH = Join-Path $metadataDir "dfs_metadata.db"
 
 Write-Host "Configuracion completada. Iniciando servicios..." -ForegroundColor Cyan
 
-# Metadata Service
-Write-Host "Iniciando Metadata Service en puerto 8000..." -ForegroundColor Yellow
+# Iniciar Metadata Service (igual que antes)
 $metadataLog = Join-Path $tempDir "dfs-metadata.log"
 $metadataErrLog = Join-Path $tempDir "dfs-metadata-errors.log"
 
 try {
-    Write-Host "  Ejecutando: $pythonCmd $($backendRoot)/metadata/server.py" -ForegroundColor Gray
-    
-    # Iniciar proceso en background con job en lugar de Start-Process
+    Write-Host "Iniciando Metadata Service en puerto 8000..."
     $metadataJob = Start-Job -ScriptBlock {
         param($pythonPath, $serverScript, $workDir, $logFile, $errFile)
-        
         Set-Location $workDir
         & $pythonPath $serverScript *> $logFile 2> $errFile
-    } -ArgumentList $pythonCmd, "$backendRoot/metadata/server.py", $backendRoot, $metadataLog, $metadataErrLog
-    
+    } -ArgumentList $pythonCmd, (Join-Path $backendRoot "metadata\server.py"), $backendRoot, $metadataLog, $metadataErrLog
+
     Write-Host "  Metadata Service Job ID: $($metadataJob.Id)" -ForegroundColor Green
-    
-    # Guardar el Job ID para cleanup
     $global:METADATA_JOB = $metadataJob
 } catch {
     Write-Host "ERROR: No se pudo iniciar Metadata Service: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }
 
-# Esperar a que el puerto este disponible
-Write-Host "Esperando a que el puerto 8000 este disponible..." -ForegroundColor Yellow
-$portReady = $false
-$portRetries = 0
-$maxPortRetries = 30
-
+# Esperar puerto metadata
+Write-Host "Esperando a que el puerto 8000 este disponible..."
+$portReady = $false; $portRetries = 0; $maxPortRetries = 30
 while (-not $portReady -and $portRetries -lt $maxPortRetries) {
-    if (Test-Port -HostName "127.0.0.1" -Port 8000 -TimeoutMs 500) {
-        $portReady = $true
-        Write-Host "Puerto 8000 esta escuchando!" -ForegroundColor Green
-    } else {
+    if (Test-Port -HostName "127.0.0.1" -Port 8000 -TimeoutMs 500) { $portReady = $true; Write-Host "Puerto 8000 esta escuchando!" -ForegroundColor Green }
+    else {
         $portRetries++
-        
-        # Verificar que el job siga corriendo
-        $jobState = Get-Job -Id $metadataJob.Id | Select-Object -ExpandProperty State
+        $jobState = (Get-Job -Id $metadataJob.Id).State
         if ($jobState -ne "Running") {
             Write-Host "ERROR: El job de Metadata Service termino inesperadamente (Estado: $jobState)" -ForegroundColor Red
-            Write-Host "Revisar logs:" -ForegroundColor Yellow
-            if (Test-Path $metadataErrLog) {
-                Get-Content $metadataErrLog -Tail 20 | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
-            }
+            if (Test-Path $metadataErrLog) { Get-Content $metadataErrLog -Tail 40 | ForEach-Object { Write-Host "  $_" } }
             exit 1
         }
-        
-        Write-Host "  Esperando puerto... $portRetries/$maxPortRetries" -ForegroundColor Gray
         Start-Sleep -Milliseconds 1000
+        Write-Host "  Esperando puerto... $portRetries/$maxPortRetries"
     }
 }
-
 if (-not $portReady) {
     Write-Host "ERROR: Puerto 8000 no esta disponible despues de $maxPortRetries intentos" -ForegroundColor Red
-    Write-Host "Revisar logs:" -ForegroundColor Yellow
-    if (Test-Path $metadataErrLog) {
-        Get-Content $metadataErrLog -Tail 20 | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
-    }
+    if (Test-Path $metadataErrLog) { Get-Content $metadataErrLog -Tail 40 | ForEach-Object { Write-Host "  $_" } }
     exit 1
 }
 
 # Verificar health endpoint
-Write-Host "Verificando health endpoint..." -ForegroundColor Yellow
-$maxRetries = 10
-$retryCount = 0
-$metadataReady = $false
-
+Write-Host "Verificando health endpoint..."
+$maxRetries = 10; $retryCount = 0; $metadataReady = $false
 while ($retryCount -lt $maxRetries -and -not $metadataReady) {
     try {
         $healthResponse = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/health" -TimeoutSec 3 -ErrorAction Stop
@@ -243,15 +185,10 @@ while ($retryCount -lt $maxRetries -and -not $metadataReady) {
         $retryCount++
         if ($retryCount -eq $maxRetries) {
             Write-Host "ERROR: Metadata Service no responde despues de $maxRetries intentos" -ForegroundColor Red
-            Write-Host "El puerto esta abierto pero el servicio no responde correctamente" -ForegroundColor Yellow
-            Write-Host "" -ForegroundColor Yellow
-            Write-Host "Revisar logs:" -ForegroundColor Yellow
-            if (Test-Path $metadataErrLog) {
-                Get-Content $metadataErrLog -Tail 30 | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
-            }
+            if (Test-Path $metadataErrLog) { Get-Content $metadataErrLog -Tail 40 | ForEach-Object { Write-Host "  $_" } }
             exit 1
         } else {
-            Write-Host "  Intento $retryCount/$maxRetries..." -ForegroundColor Gray
+            Write-Host "  Intento $retryCount/$maxRetries..."
             Start-Sleep -Seconds 2
         }
     }
@@ -259,61 +196,70 @@ while ($retryCount -lt $maxRetries -and -not $metadataReady) {
 
 Write-Host "Metadata Service listo y respondiendo!" -ForegroundColor Green
 
-# DataNode 1
-Write-Host "Iniciando DataNode 1 en puerto 8001..." -ForegroundColor Yellow
-$datanode1Log = Join-Path $tempDir "dfs-datanode1.log"
-$datanode1ErrLog = Join-Path $tempDir "dfs-datanode1-errors.log"
+# Lanzar N DataNodes (parametrizable)
+Write-Host "Iniciando $nodes DataNode(s)..."
+$basePort = 8001
+$global:DATANODE_JOBS = @()
 
-# Configurar variables de entorno para DataNode
-$env:DFS_METADATA_HOST = "localhost"
-$env:DFS_METADATA_PORT = "8000"
-$env:DFS_DATANODE_HOST = "0.0.0.0"
-$env:DFS_DATANODE_PORT = "8001"
-$env:DFS_STORAGE_PATH = "$tempDir/dfs-data-node1"
-$env:NODE_ID = "node-localhost-8001"
+for ($i = 1; $i -le $nodes; $i++) {
+    $port = $basePort + ($i - 1)
+    $storagePath = Join-Path $tempDir ("dfs-data-node{0}" -f $i)
+    $logFile = Join-Path $tempDir ("dfs-datanode{0}.log" -f $i)
+    $errFile = Join-Path $tempDir ("dfs-datanode{0}-errors.log" -f $i)
+    $nodeId = "node-localhost-$port"
 
-try {
-    Write-Host "  Ejecutando DataNode 1..." -ForegroundColor Gray
-    
-    $datanode1Job = Start-Job -ScriptBlock {
-        param($pythonPath, $workDir, $logFile, $errFile, $envVars)
-        
-        # Establecer variables de entorno
-        foreach ($key in $envVars.Keys) {
-            Set-Item -Path "env:$key" -Value $envVars[$key]
-        }
-        
-        Set-Location $workDir
-        & $pythonPath -m datanode *> $logFile 2> $errFile
-    } -ArgumentList $pythonCmd, $backendRoot, $datanode1Log, $datanode1ErrLog, @{
-        DFS_METADATA_HOST = $env:DFS_METADATA_HOST
-        DFS_METADATA_PORT = $env:DFS_METADATA_PORT
-        DFS_DATANODE_HOST = $env:DFS_DATANODE_HOST
-        DFS_DATANODE_PORT = $env:DFS_DATANODE_PORT
-        DFS_STORAGE_PATH = $env:DFS_STORAGE_PATH
-        NODE_ID = $env:NODE_ID
-        PYTHONPATH = $env:PYTHONPATH
+    Write-Host "  Iniciando DataNode $i en puerto $port (Storage: $storagePath)"
+
+    # Preparar env vars para el job
+    $envVars = @{
+        "DFS_METADATA_HOST" = "localhost"
+        "DFS_METADATA_PORT" = "8000"
+        "DFS_DATANODE_HOST" = "0.0.0.0"
+        "DFS_DATANODE_PORT" = "$port"
+        "DFS_STORAGE_PATH" = "$storagePath"
+        "NODE_ID" = $nodeId
+        "PYTHONPATH" = $env:PYTHONPATH
     }
+
+    $datanodeJob = Start-Job -ScriptBlock {
+        param($pythonPath, $workDir, $logFile, $errFile, $envVars)
+        foreach ($key in $envVars.Keys) { Set-Item -Path "env:$key" -Value $envVars[$key] }
+        Set-Location $workDir
+        & $pythonPath -m datanode.server *> $logFile 2> $errFile
+    } -ArgumentList $pythonCmd, $backendRoot, $logFile, $errFile, $envVars
+
+    $global:DATANODE_JOBS += $datanodeJob
+    Write-Host "    Job ID: $($datanodeJob.Id)"
     
-    Write-Host "  DataNode 1 Job ID: $($datanode1Job.Id)" -ForegroundColor Green
-    $global:DATANODE1_JOB = $datanode1Job
-} catch {
-    Write-Host "ERROR: No se pudo iniciar DataNode 1: $($_.Exception.Message)" -ForegroundColor Red
+    # Opcional: esperar que el puerto del datanode quede listo (pequeña comprobación)
+    $tries = 0; $maxTries = 10; $ready = $false
+    while ($tries -lt $maxTries -and -not $ready) {
+        if (Test-Port -HostName "127.0.0.1" -Port $port -TimeoutMs 500) { $ready = $true; Write-Host "    Puerto $port escuchando!" }
+        else { Start-Sleep -Milliseconds 500; $tries++ }
+    }
+    if (-not $ready) { Write-Host "    Advertencia: puerto $port no respondió en el tiempo esperado. Revisa $errFile" -ForegroundColor Yellow }
 }
 
-Write-Host "" -ForegroundColor White
-Write-Host "=== Sistema DFS iniciado ===" -ForegroundColor Green
-Write-Host "" -ForegroundColor White
-Write-Host "Servicios corriendo:" -ForegroundColor Cyan
-Write-Host "  - Metadata Service: http://127.0.0.1:8000" -ForegroundColor White
-Write-Host "  - DataNode 1: http://127.0.0.1:8001" -ForegroundColor White
-Write-Host "" -ForegroundColor White
-Write-Host "Logs disponibles en:" -ForegroundColor Cyan
-Write-Host "  - Metadata: $metadataLog" -ForegroundColor Gray
-Write-Host "  - Metadata Errors: $metadataErrLog" -ForegroundColor Gray
-Write-Host "  - DataNode 1: $datanode1Log" -ForegroundColor Gray
-Write-Host "  - DataNode 1 Errors: $datanode1ErrLog" -ForegroundColor Gray
-Write-Host "" -ForegroundColor White
-Write-Host "Para detener los servicios, ejecuta: Get-Job | Stop-Job | Remove-Job" -ForegroundColor Yellow
-Write-Host "Para ver el estado: Get-Job" -ForegroundColor Yellow
-Write-Host "" -ForegroundColor Whit
+Write-Host ""
+Write-Host "=== Sistema DFS iniciado ==="
+Write-Host "Servicios corriendo:"
+Write-Host "  - Metadata Service: http://127.0.0.1:8000"
+for ($i = 1; $i -le $nodes; $i++) {
+    $port = $basePort + ($i - 1)
+    Write-Host ("  - DataNode {0}: http://127.0.0.1:{1}" -f $i, $port)
+}
+Write-Host ""
+Write-Host "Logs disponibles en:"
+Write-Host "  - Metadata: $metadataLog"
+Write-Host "  - Metadata Errors: $metadataErrLog"
+for ($i = 1; $i -le $nodes; $i++) {
+    $logFile = Join-Path $tempDir ("dfs-datanode{0}.log" -f $i)
+    $errFile = Join-Path $tempDir ("dfs-datanode{0}-errors.log" -f $i)
+    Write-Host ("  - DataNode {0}: {1}" -f $i, $logFile)
+    Write-Host ("  - DataNode {0} Errors: {1}" -f $i, $errFile)
+}
+
+Write-Host ""
+Write-Host "Para detener los servicios, ejecuta: Get-Job | Stop-Job | Remove-Job"
+Write-Host "Para ver el estado: Get-Job"
+Write-Host ""
