@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Script para detener todo el sistema DFS - Compatible con Jobs de PowerShell
+# Script para detener todo el sistema DFS
 
 $ErrorActionPreference = "Continue"
 
@@ -10,7 +10,7 @@ $jobsFile = Join-Path $tempDir "dfs-system-jobs.txt"
 
 $processesStopped = 0
 
-# Primero intenta con Docker Compose si está disponible
+# Primero intenta con Docker Compose si está disponible (No creo que se incluya, pero lo pongo por si las moscas)
 if (Get-Command docker-compose -ErrorAction SilentlyContinue) {
     $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
     $projectRoot = Split-Path -Parent $scriptDir
@@ -37,7 +37,7 @@ if (Get-Command docker-compose -ErrorAction SilentlyContinue) {
     }
 }
 
-# Detener Jobs de PowerShell (nuevo método usado en start_all.ps1)
+# Detiene los Jobs de PowerShell
 if (Test-Path $jobsFile) {
     Write-Host ""
     Write-Host "Leyendo Jobs de $jobsFile..." -ForegroundColor Yellow
@@ -61,7 +61,7 @@ if (Test-Path $jobsFile) {
         }
     }
     
-    # Detener jobs en orden inverso (DataNodes primero, Metadata último)
+    # Detiene los jobs en orden inverso (DataNodes primero, Metadata último)
     $stopOrder = @("DATANODE_JOBS", "METADATA_JOB")
     
     foreach ($jobType in $stopOrder) {
@@ -122,7 +122,7 @@ else {
     }
 }
 
-# Buscar procesos residuales de backend (como respaldo)
+# Busca los procesos residuales del backend (como respaldo)
 Write-Host ""
 Write-Host "Buscando procesos residuales de backend..." -ForegroundColor Yellow
 
@@ -172,7 +172,7 @@ if ($backendProcesses) {
     Write-Host "No se encontraron procesos backend residuales" -ForegroundColor Green
 }
 
-# Limpiar variables de entorno
+# Limpia las variables de entorno
 Write-Host ""
 Write-Host "Limpiando variables de entorno..." -ForegroundColor Yellow
 
@@ -196,7 +196,7 @@ foreach ($envVar in $envVars) {
 
 Write-Host "$cleanedVars variables de entorno limpiadas" -ForegroundColor Green
 
-# Limpiar archivos temporales de DFS (versión mejorada)
+# Limpia los archivos temporales de DFS
 Write-Host ""
 Write-Host "Limpiando archivos temporales..." -ForegroundColor Yellow
 
@@ -215,7 +215,7 @@ $tempDirs = @(
 $cleanedFiles = 0
 $cleanedDirs = 0
 
-# Limpiar archivos
+# Limpia los archivos (Limpia el sistema, es especialmente útil si algo sale mal)
 foreach ($pattern in $tempFiles) {
     Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue | ForEach-Object {
         try {
@@ -228,7 +228,7 @@ foreach ($pattern in $tempFiles) {
     }
 }
 
-# Limpiar directorios
+# Limpia los directorios
 foreach ($dir in $tempDirs) {
     if (Test-Path $dir) {
         try {

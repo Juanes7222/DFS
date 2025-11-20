@@ -1,4 +1,5 @@
 #!/usr/bin/env pwsh
+# Script para detener todo el sistema DFS
 param(
     [int]$nodes = 3
 )
