@@ -13,9 +13,8 @@ from prometheus_client import (
     CONTENT_TYPE_LATEST,
     CollectorRegistry,
 )
-from fastapi import Response, Request
+from fastapi import Response
 
-from core.config import config
 
 # Registry global para métricas
 registry = CollectorRegistry()

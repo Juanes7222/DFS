@@ -5,7 +5,6 @@ Tests End-to-End para el DFS - Versión refactorizada
 import asyncio
 import os
 import tempfile
-from pathlib import Path
 
 import pytest
 import httpx

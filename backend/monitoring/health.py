@@ -2,16 +2,14 @@
 Sistema de health checks - Versión completa
 """
 
-import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 import httpx
 
 from core.config import config
-from core.exceptions import DFSMetadataError
-from shared.models import HealthResponse, SystemStats
+from shared.models import HealthResponse
 
 logger = logging.getLogger(__name__)
 

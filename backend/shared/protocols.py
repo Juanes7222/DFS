@@ -11,8 +11,6 @@ from shared.models import (
     NodeInfo,
     ChunkTarget,
     ChunkCommitInfo,
-    UploadInitRequest,
-    UploadInitResponse,
     LeaseResponse,
 )
 

@@ -2,7 +2,6 @@
 DFS Client Library - Versión refactorizada completa
 """
 
-import asyncio
 import logging
 from pathlib import Path
 from typing import List, Optional, Callable

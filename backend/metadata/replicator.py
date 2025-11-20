@@ -4,15 +4,13 @@ Replication Manager - Versión refactorizada completa
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
-from typing import List, Dict, Tuple
+from typing import List, Dict
 from uuid import UUID
 
 import httpx
 
 from core.config import config
-from core.exceptions import DFSMetadataError
-from shared.models import ChunkState, NodeState
+from shared.models import ChunkState
 from shared.protocols import ReplicationProtocol
 
 logger = logging.getLogger(__name__)

@@ -1,7 +1,6 @@
 """Metadata Service refactorizado"""
 
 from contextlib import asynccontextmanager
-from typing import Optional
 
 from fastapi import FastAPI
 
@@ -9,7 +8,7 @@ from core.config import config
 from core.logging import setup_logging
 from metadata.storage import MetadataStorage
 from metadata.replicator import ReplicationManager
-from monitoring.metrics import metrics_endpoint, MetricsMiddleware
+from monitoring.metrics import MetricsMiddleware
 
 logger = setup_logging()
 

@@ -8,9 +8,8 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
-from uuid import UUID, uuid4
+from uuid import UUID
 
-from core.config import config
 from core.exceptions import DFSLeaseConflictError
 from shared.models import LeaseResponse  # asumes que LeaseResponse existe y está tipado
 

@@ -8,7 +8,6 @@ from uuid import UUID
 import httpx
 
 from core.config import config
-from core.exceptions import DFSMetadataError
 
 logger = logging.getLogger(__name__)
 
