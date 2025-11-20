@@ -185,7 +185,7 @@ export default function Files() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search files..."
+                placeholder="Buscar archivo por nombre..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -208,7 +208,7 @@ export default function Files() {
               </div>
             ) : filteredFiles.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                {searchQuery ? "No files match your search" : "No files uploaded yet"}
+                {searchQuery ? "No se encontraron archivos que coincidan con tu búsqueda" : "Aún no se han subido archivos"}
               </div>
             ) : (
               <Table>

@@ -151,7 +151,6 @@ replication_lag = Gauge(
 active_leases = Gauge("dfs_active_leases", "Number of active leases", registry=registry)
 
 
-
 def metrics_endpoint():
     """Endpoint para exponer métricas Prometheus."""
     return Response(content=generate_latest(registry), media_type=CONTENT_TYPE_LATEST)

@@ -25,6 +25,7 @@ class HeartbeatManager:
     async def start(self):
         """Inicia el envío de heartbeats."""
         import sys
+
         self.running = True
         sys.stderr.write(f"[DEBUG] Heartbeat manager iniciado para {self.node_id}\n")
         sys.stderr.write(f"[DEBUG] Metadata URL: {self.metadata_url}\n")
@@ -32,7 +33,6 @@ class HeartbeatManager:
         logger.info(f"Heartbeat manager iniciado para {self.node_id}")
         logger.info(f"Metadata URL: {self.metadata_url}")
         self.task = asyncio.create_task(self._heartbeat_loop())
-
 
     async def stop(self):
         """Detiene el envío de heartbeats."""
@@ -60,10 +60,11 @@ class HeartbeatManager:
     async def _send_heartbeat(self):
         """Envía un heartbeat al Metadata Service."""
         import traceback
+
         try:
             storage_info = self.storage.get_storage_info()
             chunk_ids = self._get_stored_chunk_ids()
-            
+
             url = f"{self.metadata_url}/api/v1/nodes/heartbeat"
             payload = {
                 "node_id": self.node_id,
@@ -71,7 +72,7 @@ class HeartbeatManager:
                 "total_space": storage_info["total_space"],
                 "chunk_ids": [str(chunk_id) for chunk_id in chunk_ids],
             }
-            
+
             logger.info(f"Enviando heartbeat a: {url}")
             logger.info(f"Payload: {payload}")
 
@@ -81,7 +82,9 @@ class HeartbeatManager:
                 if response.status_code == 200:
                     logger.debug(f"Heartbeat enviado: {self.node_id}")
                 else:
-                    logger.warning(f"Heartbeat falló: {response.status_code} - {response.text}")
+                    logger.warning(
+                        f"Heartbeat falló: {response.status_code} - {response.text}"
+                    )
 
         except Exception as e:
             logger.error(f"Error enviando heartbeat: {e}")

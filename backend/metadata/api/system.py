@@ -20,6 +20,7 @@ router = APIRouter()
 def get_storage():
     """Dependency para obtener storage instance"""
     from metadata import context
+
     if not context.storage:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -31,12 +32,14 @@ def get_storage():
 def get_replicator():
     """Dependency para obtener replicator instance"""
     from metadata import context
+
     return context.replicator
 
 
 def get_lease_manager():
     """Dependency para obtener lease manager instance"""
     from metadata import context
+
     return context.lease_manager
 
 
@@ -47,7 +50,7 @@ async def root():
     Proporciona información básica y enlaces a recursos principales.
     """
     from metadata import context
-    
+
     return {
         "service": "DFS Metadata Service",
         "version": "1.0.0",
@@ -76,13 +79,10 @@ async def health_check():
     """
     try:
         storage = get_storage()
-        
+
         # Verificar estado de nodos (sin await para evitar bloqueos)
         try:
-            nodes = await asyncio.wait_for(
-                storage.list_nodes(), 
-                timeout=2.0
-            )
+            nodes = await asyncio.wait_for(storage.list_nodes(), timeout=2.0)
             active_nodes = [n for n in nodes if n.state.value == "active"]
         except asyncio.TimeoutError:
             logger.warning("Timeout obteniendo lista de nodos en health check")
@@ -91,36 +91,32 @@ async def health_check():
                 details={
                     "error": "Timeout obteniendo nodos",
                     "timestamp": datetime.utcnow().isoformat(),
-                }
+                },
             )
-        
+
         status_value = "healthy"
         if len(active_nodes) < config.replication_factor:
             status_value = "degraded"
         elif len(active_nodes) == 0:
             status_value = "unhealthy"
-        
+
         details = {
             "total_nodes": len(nodes),
             "active_nodes": len(active_nodes),
             "replication_factor": config.replication_factor,
             "timestamp": datetime.utcnow().isoformat(),
         }
-        
+
         return HealthResponse(status=status_value, details=details)
-    
+
     except HTTPException:
         # Storage no inicializado
         return HealthResponse(
-            status="unhealthy", 
-            details={"error": "Storage no inicializado"}
+            status="unhealthy", details={"error": "Storage no inicializado"}
         )
     except Exception as e:
         logger.error(f"Error en health check: {e}")
-        return HealthResponse(
-            status="unhealthy", 
-            details={"error": str(e)}
-        )
+        return HealthResponse(status="unhealthy", details={"error": str(e)})
 
 
 @router.get("/stats")
@@ -130,30 +126,30 @@ async def get_system_stats():
     Incluye métricas de archivos, nodos, replicación y leases.
     """
     storage = get_storage()
-    
+
     if not storage:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Storage no inicializado",
         )
-    
+
     try:
         stats = await storage.get_system_stats()
-        
+
         # Agregar información de replicación
         replicator = get_replicator()
         if replicator:
             replication_stats = replicator.get_stats()
             stats["replication"] = replication_stats
-        
+
         # Agregar información de leases
         lease_mgr = get_lease_manager()
         if lease_mgr:
             lease_stats = lease_mgr.get_lease_stats()
             stats["leases"] = lease_stats
-        
+
         return SystemStats(**stats)
-    
+
     except Exception as e:
         logger.error(f"Error obteniendo stats del sistema: {e}")
         raise HTTPException(
@@ -197,25 +193,25 @@ async def cleanup_orphaned_data():
     Requiere permisos de administrador.
     """
     logger.info("Cleanup de datos huérfanos iniciado")
-    
+
     storage = get_storage()
-    
+
     if not storage:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Storage no inicializado",
         )
-    
+
     try:
         # Por ahora solo retornamos info, se pueden implementar métodos de limpieza después
         logger.info("Cleanup de datos huérfanos solicitado")
-        
+
         return {
             "status": "completed",
             "message": "Cleanup functionality pending implementation",
             "timestamp": datetime.utcnow().isoformat(),
         }
-    
+
     except Exception as e:
         logger.error(f"Error en cleanup: {e}")
         raise HTTPException(

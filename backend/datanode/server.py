@@ -36,7 +36,7 @@ class DataNodeServer:
 
     def _create_app(self) -> FastAPI:
         """Crea la aplicación FastAPI."""
-        
+
         @asynccontextmanager
         async def lifespan(app: FastAPI):
             """Gestión del ciclo de vida del DataNode"""
@@ -45,7 +45,7 @@ class DataNodeServer:
             yield
             # Shutdown
             await self.stop()
-        
+
         app = FastAPI(
             title=f"DFS DataNode {self.node_id}",
             description="Nodo de almacenamiento para Sistema de Archivos Distribuido",
@@ -106,20 +106,23 @@ class DataNodeServer:
     async def start(self):
         """Inicia el DataNode."""
         import sys
-        sys.stderr.write(f"[DEBUG] Iniciando DataNode {self.node_id} en puerto {self.port}\n")
+
+        sys.stderr.write(
+            f"[DEBUG] Iniciando DataNode {self.node_id} en puerto {self.port}\n"
+        )
         sys.stderr.flush()
         logger.info(f"Iniciando DataNode {self.node_id} en puerto {self.port}")
 
         # Inicializar storage
         await self.storage.initialize()
-        sys.stderr.write(f"[DEBUG] Storage inicializado\n")
+        sys.stderr.write("[DEBUG] Storage inicializado\n")
         sys.stderr.flush()
 
         # Iniciar heartbeat
         sys.stderr.write(f"[DEBUG] Metadata URL: {config.metadata_url}\n")
         sys.stderr.flush()
         await self.heartbeat_manager.start()
-        sys.stderr.write(f"[DEBUG] Heartbeat manager iniciado\n")
+        sys.stderr.write("[DEBUG] Heartbeat manager iniciado\n")
         sys.stderr.flush()
 
         logger.info(f"DataNode {self.node_id} iniciado correctamente")
@@ -135,14 +138,12 @@ def main():
     """Función principal para ejecutar el DataNode."""
     import uvicorn
     import sys
-    
+
     # Configurar logging básico
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(sys.stdout)
-        ]
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
     )
 
     server = DataNodeServer()

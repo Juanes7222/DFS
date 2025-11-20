@@ -25,7 +25,7 @@ function Get-PythonCommand {
         try {
             $versionOutput = & $venvPython --version 2>&1
             if ($LASTEXITCODE -eq 0 -and $versionOutput -match "Python") {
-                Write-Host "OK Encontrado en venv: $venvPython" -ForegroundColor Green
+                Write-Host "OK. Encontrado en venv: $venvPython" -ForegroundColor Green
                 return $venvPython
             }
         } catch { }
@@ -37,7 +37,7 @@ function Get-PythonCommand {
             $pythonPath = Get-Command $cmd -ErrorAction Stop | Select-Object -ExpandProperty Source
             $versionOutput = & $pythonPath --version 2>&1
             if ($LASTEXITCODE -eq 0 -and $versionOutput -match "Python") {
-                Write-Host "OK Encontrado: $pythonPath" -ForegroundColor Green
+                Write-Host "OK. Encontrado: $pythonPath" -ForegroundColor Green
                 return $pythonPath
             }
         } catch { continue }
@@ -54,7 +54,7 @@ function Get-PythonCommand {
         )
         foreach ($path in $commonPaths) {
             if (Test-Path $path) {
-                Write-Host "OK Encontrado en ruta comun: $path" -ForegroundColor Green
+                Write-Host "OK. Encontrado en ruta comun: $path" -ForegroundColor Green
                 return $path
             }
         }
@@ -90,9 +90,6 @@ try {
     if ($majorVersion -lt 3 -or ($majorVersion -eq 3 -and $minorVersion -lt 8)) {
         Write-Host "ERROR: Se requiere Python 3.8 o superior" -ForegroundColor Red
         exit 1
-    }
-    if ($majorVersion -eq 3 -and $minorVersion -gt 11) {
-        Write-Host "ADVERTENCIA: Python $versionInfo puede tener compatibilidad limitada" -ForegroundColor Yellow
     }
 } catch {
     Write-Host "ERROR: No se pudo verificar la version de Python" -ForegroundColor Red
