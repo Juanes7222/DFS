@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 from uuid import UUID
 
-from backend.shared.models import (
+from shared.models import (
     FileMetadata,
     NodeInfo,
     ChunkTarget,

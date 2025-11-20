@@ -6,8 +6,8 @@ import os
 from datetime import datetime, timedelta
 from typing import Optional, Any, cast, List
 
-from backend.core.config import config
-from backend.core.exceptions import DFSSecurityError
+from core.config import config
+from core.exceptions import DFSSecurityError
 
 try:
     import jwt  # type: ignore
