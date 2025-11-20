@@ -1,17 +1,18 @@
 """DataNode unificado - Combina las mejores características de ambas implementaciones"""
 
 import logging
+from contextlib import asynccontextmanager
 from typing import Optional
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, UploadFile, Query
 from fastapi.responses import StreamingResponse
 
-from backend.core.config import config
-from backend.core.exceptions import DFSStorageError
-from .storage import ChunkStorage
-from .heartbeat import HeartbeatManager
-from backend.monitoring.metrics import metrics_endpoint, MetricsMiddleware
+from core.config import config
+from core.exceptions import DFSStorageError
+from datanode.storage import ChunkStorage
+from datanode.heartbeat import HeartbeatManager
+from monitoring.metrics import metrics_endpoint, MetricsMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -35,24 +36,27 @@ class DataNodeServer:
 
     def _create_app(self) -> FastAPI:
         """Crea la aplicación FastAPI."""
+        
+        @asynccontextmanager
+        async def lifespan(app: FastAPI):
+            """Gestión del ciclo de vida del DataNode"""
+            # Startup
+            await self.start()
+            yield
+            # Shutdown
+            await self.stop()
+        
         app = FastAPI(
             title=f"DFS DataNode {self.node_id}",
             description="Nodo de almacenamiento para Sistema de Archivos Distribuido",
             version="1.0.0",
+            lifespan=lifespan,
         )
 
         # Middleware
         app.add_middleware(MetricsMiddleware)
 
         # Endpoints
-        @app.on_event("startup")
-        async def startup():
-            await self.start()
-
-        @app.on_event("shutdown")
-        async def shutdown():
-            await self.stop()
-
         @app.put("/api/v1/chunks/{chunk_id}")
         async def put_chunk(
             chunk_id: UUID, file: UploadFile, replicate_to: Optional[str] = Query(None)
@@ -101,13 +105,22 @@ class DataNodeServer:
 
     async def start(self):
         """Inicia el DataNode."""
+        import sys
+        sys.stderr.write(f"[DEBUG] Iniciando DataNode {self.node_id} en puerto {self.port}\n")
+        sys.stderr.flush()
         logger.info(f"Iniciando DataNode {self.node_id} en puerto {self.port}")
 
         # Inicializar storage
         await self.storage.initialize()
+        sys.stderr.write(f"[DEBUG] Storage inicializado\n")
+        sys.stderr.flush()
 
         # Iniciar heartbeat
+        sys.stderr.write(f"[DEBUG] Metadata URL: {config.metadata_url}\n")
+        sys.stderr.flush()
         await self.heartbeat_manager.start()
+        sys.stderr.write(f"[DEBUG] Heartbeat manager iniciado\n")
+        sys.stderr.flush()
 
         logger.info(f"DataNode {self.node_id} iniciado correctamente")
 
@@ -121,6 +134,16 @@ class DataNodeServer:
 def main():
     """Función principal para ejecutar el DataNode."""
     import uvicorn
+    import sys
+    
+    # Configurar logging básico
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
 
     server = DataNodeServer()
     uvicorn.run(server.app, host=config.datanode_host, port=server.port)

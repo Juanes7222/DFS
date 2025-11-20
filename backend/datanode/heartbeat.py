@@ -7,7 +7,7 @@ from uuid import UUID
 
 import httpx
 
-from backend.core.config import config
+from core.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +24,15 @@ class HeartbeatManager:
 
     async def start(self):
         """Inicia el envío de heartbeats."""
+        import sys
         self.running = True
-        self.task = asyncio.create_task(self._heartbeat_loop())
+        sys.stderr.write(f"[DEBUG] Heartbeat manager iniciado para {self.node_id}\n")
+        sys.stderr.write(f"[DEBUG] Metadata URL: {self.metadata_url}\n")
+        sys.stderr.flush()
         logger.info(f"Heartbeat manager iniciado para {self.node_id}")
+        logger.info(f"Metadata URL: {self.metadata_url}")
+        self.task = asyncio.create_task(self._heartbeat_loop())
+
 
     async def stop(self):
         """Detiene el envío de heartbeats."""
@@ -53,28 +59,33 @@ class HeartbeatManager:
 
     async def _send_heartbeat(self):
         """Envía un heartbeat al Metadata Service."""
+        import traceback
         try:
             storage_info = self.storage.get_storage_info()
             chunk_ids = self._get_stored_chunk_ids()
+            
+            url = f"{self.metadata_url}/api/v1/nodes/heartbeat"
+            payload = {
+                "node_id": self.node_id,
+                "free_space": storage_info["free_space"],
+                "total_space": storage_info["total_space"],
+                "chunk_ids": [str(chunk_id) for chunk_id in chunk_ids],
+            }
+            
+            logger.info(f"Enviando heartbeat a: {url}")
+            logger.info(f"Payload: {payload}")
 
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
-                    f"{self.metadata_url}/api/v1/nodes/heartbeat",
-                    json={
-                        "node_id": self.node_id,
-                        "free_space": storage_info["free_space"],
-                        "total_space": storage_info["total_space"],
-                        "chunk_ids": [str(chunk_id) for chunk_id in chunk_ids],
-                    },
-                )
+                response = await client.post(url, json=payload)
 
                 if response.status_code == 200:
                     logger.debug(f"Heartbeat enviado: {self.node_id}")
                 else:
-                    logger.warning(f"Heartbeat falló: {response.status_code}")
+                    logger.warning(f"Heartbeat falló: {response.status_code} - {response.text}")
 
         except Exception as e:
             logger.error(f"Error enviando heartbeat: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
 
     def _get_stored_chunk_ids(self) -> List[UUID]:
         """Obtiene la lista de chunks almacenados."""
