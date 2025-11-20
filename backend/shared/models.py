@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 class NodeState(str, Enum):
     """Estado de un nodo"""
+
     ACTIVE = "active"
     INACTIVE = "inactive"
     DRAINING = "draining"
@@ -18,6 +19,7 @@ class NodeState(str, Enum):
 
 class ChunkState(str, Enum):
     """Estado de una réplica de chunk"""
+
     PENDING = "pending"
     COMMITTED = "committed"
     CORRUPTED = "corrupted"
@@ -26,8 +28,9 @@ class ChunkState(str, Enum):
 
 class ReplicaInfo(BaseModel):
     """Información de una réplica de chunk"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     node_id: str
     url: str
     state: ChunkState = ChunkState.PENDING
@@ -37,8 +40,9 @@ class ReplicaInfo(BaseModel):
 
 class ChunkEntry(BaseModel):
     """Entrada de chunk en un archivo"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     chunk_id: UUID = Field(default_factory=uuid4)
     seq_index: int
     size: int
@@ -48,8 +52,9 @@ class ChunkEntry(BaseModel):
 
 class FileMetadata(BaseModel):
     """Metadatos de un archivo"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     file_id: UUID = Field(default_factory=uuid4)
     path: str
     size: int
@@ -62,8 +67,9 @@ class FileMetadata(BaseModel):
 
 class NodeInfo(BaseModel):
     """Información de un nodo de almacenamiento"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     node_id: str
     host: str
     port: int
@@ -77,8 +83,9 @@ class NodeInfo(BaseModel):
 
 class UploadInitRequest(BaseModel):
     """Request para iniciar una subida"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     path: str
     size: int
     chunk_size: int = 64 * 1024 * 1024  # 64MB default
@@ -86,8 +93,9 @@ class UploadInitRequest(BaseModel):
 
 class ChunkTarget(BaseModel):
     """Target para subir un chunk"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     chunk_id: UUID
     size: int
     targets: List[str]  # URLs de DataNodes
@@ -95,16 +103,18 @@ class ChunkTarget(BaseModel):
 
 class UploadInitResponse(BaseModel):
     """Response de upload-init"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     file_id: UUID
     chunks: List[ChunkTarget]
 
 
 class ChunkCommitInfo(BaseModel):
     """Información de commit de un chunk"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     chunk_id: UUID
     checksum: str
     nodes: List[str]  # node_ids donde se escribió
@@ -112,16 +122,18 @@ class ChunkCommitInfo(BaseModel):
 
 class CommitRequest(BaseModel):
     """Request para confirmar una subida"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     file_id: UUID
     chunks: List[ChunkCommitInfo]
 
 
 class HeartbeatRequest(BaseModel):
     """Request de heartbeat de un DataNode"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     node_id: str
     free_space: int
     total_space: int
@@ -130,8 +142,9 @@ class HeartbeatRequest(BaseModel):
 
 class LeaseRequest(BaseModel):
     """Request para adquirir un lease"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     path: str
     operation: str  # "write" | "delete"
     timeout_seconds: int = 300
@@ -139,8 +152,9 @@ class LeaseRequest(BaseModel):
 
 class LeaseResponse(BaseModel):
     """Response de lease"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     lease_id: UUID
     path: str
     expires_at: datetime
@@ -148,8 +162,9 @@ class LeaseResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """Response de health check"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     status: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     details: Optional[dict] = None
@@ -157,8 +172,9 @@ class HealthResponse(BaseModel):
 
 class SystemStats(BaseModel):
     """Estadísticas del sistema"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     total_files: int
     total_chunks: int
     total_nodes: int

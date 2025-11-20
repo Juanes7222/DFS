@@ -35,7 +35,7 @@ class LeaseManager:
         path: str,
         operation: str,
         client_id: Optional[str] = None,
-        timeout_seconds: int = 300
+        timeout_seconds: int = 300,
     ) -> LeaseResponse:
         """
         Adquiere un lease para una operación.
@@ -54,9 +54,7 @@ class LeaseManager:
 
             # Intentar adquirir lease en el storage
             lease_response = await self.storage.acquire_lease(
-                path=path,
-                operation=operation,
-                timeout_seconds=timeout_seconds
+                path=path, operation=operation, timeout_seconds=timeout_seconds
             )
 
             if not lease_response:
@@ -68,7 +66,7 @@ class LeaseManager:
                 path=path,
                 operation=operation,
                 client_id=client_id,
-                expires_at=lease_response.expires_at
+                expires_at=lease_response.expires_at,
             )
 
             self.local_leases[path] = lease_info
@@ -105,9 +103,11 @@ class LeaseManager:
             # Verificar localmente primero
             if path in self.local_leases:
                 lease_info = self.local_leases[path]
-                if (lease_info.lease_id == lease_id and
-                        lease_info.is_valid() and
-                        not lease_info.is_expired()):
+                if (
+                    lease_info.lease_id == lease_id
+                    and lease_info.is_valid()
+                    and not lease_info.is_expired()
+                ):
                     return True
 
             # Si no está localmente o es inválido, verificar con el storage
@@ -115,8 +115,9 @@ class LeaseManager:
             # Por simplicidad, asumimos que si no está localmente, es inválido
             return False
 
-    async def renew_lease(self, lease_id: UUID, path: str,
-                         timeout_seconds: int = 300) -> bool:
+    async def renew_lease(
+        self, lease_id: UUID, path: str, timeout_seconds: int = 300
+    ) -> bool:
         """
         Renueva un lease existente.
         """
@@ -135,7 +136,7 @@ class LeaseManager:
                     path=path,
                     operation=lease_info.operation,
                     client_id=lease_info.client_id,
-                    timeout_seconds=timeout_seconds
+                    timeout_seconds=timeout_seconds,
                 )
 
                 logger.info(f"Lease renovado: {path} (nuevo ID: {new_lease.lease_id})")
@@ -170,7 +171,9 @@ class LeaseManager:
         """Limpia leases expirados localmente."""
         async with self.lock:
             now = datetime.utcnow()
-            expired_paths = [p for p, li in self.local_leases.items() if li.is_expired(now)]
+            expired_paths = [
+                p for p, li in self.local_leases.items() if li.is_expired(now)
+            ]
 
             for path in expired_paths:
                 del self.local_leases[path]
@@ -181,7 +184,8 @@ class LeaseManager:
         now = datetime.utcnow()
         total_leases = len(self.local_leases)
         active_leases = sum(
-            1 for lease_info in self.local_leases.values()
+            1
+            for lease_info in self.local_leases.values()
             if not lease_info.is_expired(now)
         )
         expired_leases = total_leases - active_leases
@@ -189,7 +193,7 @@ class LeaseManager:
         return {
             "total_leases": total_leases,
             "active_leases": active_leases,
-            "expired_leases": expired_leases
+            "expired_leases": expired_leases,
         }
 
 
@@ -203,14 +207,16 @@ class LeaseInfo:
         operation: str,
         client_id: Optional[str] = None,
         expires_at: Optional[datetime] = None,
-        timeout_seconds: int = 300
+        timeout_seconds: int = 300,
     ):
         self.lease_id = lease_id
         self.path = path
         self.operation = operation
         self.client_id = client_id
         # expires_at puede ser pasado (datetime) o None -> calculamos a partir de timeout
-        self.expires_at: datetime = expires_at or (datetime.utcnow() + timedelta(seconds=timeout_seconds))
+        self.expires_at: datetime = expires_at or (
+            datetime.utcnow() + timedelta(seconds=timeout_seconds)
+        )
         self.created_at: datetime = datetime.utcnow()
 
     def is_valid(self) -> bool:
@@ -239,5 +245,5 @@ class LeaseInfo:
             "client_id": self.client_id,
             "expires_at": self.expires_at.isoformat(),
             "created_at": self.created_at.isoformat(),
-            "time_remaining": self.time_remaining()
+            "time_remaining": self.time_remaining(),
         }

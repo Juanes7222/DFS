@@ -12,6 +12,7 @@ from core.exceptions import DFSSecurityError
 try:
     import jwt  # type: ignore
     from jwt import PyJWTError  # type: ignore
+
     JWT_AVAILABLE = True
 except ImportError:
     JWT_AVAILABLE = False
@@ -21,6 +22,7 @@ except ImportError:
 try:
     from fastapi import HTTPException, Security, status, Depends
     from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
     FASTAPI_AVAILABLE = True
 except ImportError:
     FASTAPI_AVAILABLE = False
@@ -30,6 +32,7 @@ from pydantic import BaseModel, Field
 
 class TokenData(BaseModel):
     """Datos contenidos en un token JWT"""
+
     username: str
     client_id: str
     permissions: List[str] = Field(default_factory=list)
@@ -41,13 +44,17 @@ class JWTManager:
 
     def __init__(self, secret_key: Optional[str] = None, algorithm: str = "HS256"):
         if not JWT_AVAILABLE:
-            raise DFSSecurityError("PyJWT no está instalado. Instalar con: pip install pyjwt")
+            raise DFSSecurityError(
+                "PyJWT no está instalado. Instalar con: pip install pyjwt"
+            )
 
         # preferimos que exista una clave en config o pasada explícitamente;
         # si no existe, lanzamos para evitar usar None más adelante
         resolved_secret = secret_key or getattr(config, "jwt_secret_key", None)
         if not resolved_secret:
-            raise DFSSecurityError("Secret key para JWT no está configurada (config.jwt_secret_key faltante).")
+            raise DFSSecurityError(
+                "Secret key para JWT no está configurada (config.jwt_secret_key faltante)."
+            )
 
         self.secret_key: str = resolved_secret
         self.algorithm = algorithm
@@ -57,7 +64,7 @@ class JWTManager:
         username: str,
         client_id: str,
         permissions: Optional[List[str]] = None,
-        expires_delta: Optional[timedelta] = None
+        expires_delta: Optional[timedelta] = None,
     ) -> str:
         """
         Crea un token JWT.
@@ -74,11 +81,13 @@ class JWTManager:
             # PyJWT acepta datetime para exp si usa opcionales, pero para consistencia
             # convertimos a timestamp (segundos)
             "exp": int(expires_at.timestamp()),
-            "iat": int(datetime.utcnow().timestamp())
+            "iat": int(datetime.utcnow().timestamp()),
         }
 
         # Aseguramos al analizador que jwt no es None aquí
-        token = cast(Any, jwt).encode(payload, self.secret_key, algorithm=self.algorithm)
+        token = cast(Any, jwt).encode(
+            payload, self.secret_key, algorithm=self.algorithm
+        )
         # PyJWT >= 2 devuelve str; si obtiene bytes, convertimos:
         if isinstance(token, bytes):
             token = token.decode("utf-8")
@@ -91,7 +100,9 @@ class JWTManager:
         """
         try:
             # decode normalmente devuelve el payload dict
-            payload = cast(Any, jwt).decode(token, self.secret_key, algorithms=[self.algorithm])
+            payload = cast(Any, jwt).decode(
+                token, self.secret_key, algorithms=[self.algorithm]
+            )
 
             # Validaciones adicionales defensivas:
             if payload is None:
@@ -115,7 +126,7 @@ class JWTManager:
                 username=str(sub),
                 client_id=str(client_id),
                 permissions=list(permissions),
-                expires_at=expires_at
+                expires_at=expires_at,
             )
         except PyJWTError as e:
             # PyJWTError ya está definido (o es Exception si no está instalado)
@@ -139,7 +150,7 @@ if FASTAPI_AVAILABLE:
     security = HTTPBearer()
 
     async def verify_jwt_token(
-        credentials: HTTPAuthorizationCredentials = Security(security)
+        credentials: HTTPAuthorizationCredentials = Security(security),
     ) -> TokenData:
         """
         Dependency de FastAPI para verificar tokens JWT.
@@ -158,13 +169,14 @@ if FASTAPI_AVAILABLE:
         """
         Dependency de FastAPI para verificar permisos.
         """
+
         async def permission_checker(
-            token_data: TokenData = Depends(verify_jwt_token)
+            token_data: TokenData = Depends(verify_jwt_token),
         ) -> TokenData:
             if permission not in token_data.permissions:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Permiso requerido: {permission}"
+                    detail=f"Permiso requerido: {permission}",
                 )
             return token_data
 
@@ -180,13 +192,23 @@ class MTLSConfig:
         server_cert_path: Optional[str] = None,
         server_key_path: Optional[str] = None,
         client_cert_path: Optional[str] = None,
-        client_key_path: Optional[str] = None
+        client_key_path: Optional[str] = None,
     ):
-        self.ca_cert_path = ca_cert_path or os.getenv("DFS_CA_CERT", "/etc/dfs/certs/ca.crt")
-        self.server_cert_path = server_cert_path or os.getenv("DFS_SERVER_CERT", "/etc/dfs/certs/server.crt")
-        self.server_key_path = server_key_path or os.getenv("DFS_SERVER_KEY", "/etc/dfs/certs/server.key")
-        self.client_cert_path = client_cert_path or os.getenv("DFS_CLIENT_CERT", "/etc/dfs/certs/client.crt")
-        self.client_key_path = client_key_path or os.getenv("DFS_CLIENT_KEY", "/etc/dfs/certs/client.key")
+        self.ca_cert_path = ca_cert_path or os.getenv(
+            "DFS_CA_CERT", "/etc/dfs/certs/ca.crt"
+        )
+        self.server_cert_path = server_cert_path or os.getenv(
+            "DFS_SERVER_CERT", "/etc/dfs/certs/server.crt"
+        )
+        self.server_key_path = server_key_path or os.getenv(
+            "DFS_SERVER_KEY", "/etc/dfs/certs/server.key"
+        )
+        self.client_cert_path = client_cert_path or os.getenv(
+            "DFS_CLIENT_CERT", "/etc/dfs/certs/client.crt"
+        )
+        self.client_key_path = client_key_path or os.getenv(
+            "DFS_CLIENT_KEY", "/etc/dfs/certs/client.key"
+        )
 
     def get_server_ssl_context(self):
         """

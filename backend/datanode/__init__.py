@@ -8,6 +8,6 @@ from datanode.heartbeat import HeartbeatManager
 
 __all__ = [
     "DataNodeServer",
-    "ChunkStorage", 
+    "ChunkStorage",
     "HeartbeatManager",
 ]

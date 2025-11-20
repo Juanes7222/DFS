@@ -10,7 +10,7 @@ from metadata.leases import LeaseManager, LeaseInfo
 __all__ = [
     "metadata_app",
     "MetadataStorage",
-    "ReplicationManager", 
+    "ReplicationManager",
     "LeaseManager",
     "LeaseInfo",
 ]

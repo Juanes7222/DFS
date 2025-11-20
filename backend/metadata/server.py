@@ -13,26 +13,27 @@ from monitoring.metrics import metrics_endpoint, MetricsMiddleware
 
 logger = setup_logging()
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Gestión del ciclo de vida de la aplicación"""
     # Inicializar componentes
     app.state.storage = MetadataStorage()
     await app.state.storage.initialize()
-    
+
     app.state.replicator = ReplicationManager(
-        storage=app.state.storage,
-        replication_factor=config.replication_factor
+        storage=app.state.storage, replication_factor=config.replication_factor
     )
-    
+
     # Iniciar background tasks
     await app.state.replicator.start()
-    
+
     yield
-    
+
     # Cleanup
     await app.state.replicator.stop()
     await app.state.storage.close()
+
 
 app = FastAPI(
     title="DFS Metadata Service",

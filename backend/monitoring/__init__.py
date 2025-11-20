@@ -29,7 +29,7 @@ from monitoring.health import (
 
 __all__ = [
     "metrics_endpoint",
-    "MetricsMiddleware", 
+    "MetricsMiddleware",
     "update_system_metrics",
     "update_datanode_metrics",
     "record_upload_operation",
@@ -37,7 +37,7 @@ __all__ = [
     "record_delete_operation",
     "record_chunk_read",
     "record_chunk_write",
-    "record_chunk_delete", 
+    "record_chunk_delete",
     "record_heartbeat",
     "record_replication_attempt",
     "update_lease_metrics",

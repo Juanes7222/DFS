@@ -14,8 +14,15 @@ from uuid import UUID, uuid4
 from core.config import config
 from core.exceptions import DFSMetadataError
 from shared.models import (
-    ChunkEntry, ChunkState, ChunkTarget, ChunkCommitInfo,
-    FileMetadata, LeaseResponse, NodeInfo, NodeState, ReplicaInfo
+    ChunkEntry,
+    ChunkState,
+    ChunkTarget,
+    ChunkCommitInfo,
+    FileMetadata,
+    LeaseResponse,
+    NodeInfo,
+    NodeState,
+    ReplicaInfo,
 )
 from shared.protocols import MetadataStorageProtocol
 
@@ -30,7 +37,9 @@ class MetadataStorage(MetadataStorageProtocol):
     def __init__(self, db_path: Optional[str] = None):
         resolved = db_path or getattr(config, "db_path", None)
         if not resolved:
-            raise DFSMetadataError("db_path no está configurado (config.db_path faltante).")
+            raise DFSMetadataError(
+                "db_path no está configurado (config.db_path faltante)."
+            )
 
         self.db_path: str = resolved
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -41,7 +50,9 @@ class MetadataStorage(MetadataStorageProtocol):
     def _conn(self) -> sqlite3.Connection:
         """Accesor que devuelve la conexión no-Optional o lanza error."""
         if self.conn is None:
-            raise DFSMetadataError("Conexión a la base de datos no inicializada. Llamar a initialize().")
+            raise DFSMetadataError(
+                "Conexión a la base de datos no inicializada. Llamar a initialize()."
+            )
         return self.conn
 
     async def initialize(self) -> None:
@@ -90,7 +101,7 @@ class MetadataStorage(MetadataStorageProtocol):
                 client_id TEXT,
                 expires_at TEXT NOT NULL
             )
-            """
+            """,
         ]
 
         indexes = [
@@ -99,7 +110,7 @@ class MetadataStorage(MetadataStorageProtocol):
             "CREATE INDEX IF NOT EXISTS idx_nodes_state ON nodes(state)",
             "CREATE INDEX IF NOT EXISTS idx_nodes_heartbeat ON nodes(last_heartbeat)",
             "CREATE INDEX IF NOT EXISTS idx_leases_path ON leases(path)",
-            "CREATE INDEX IF NOT EXISTS idx_leases_expires ON leases(expires_at)"
+            "CREATE INDEX IF NOT EXISTS idx_leases_expires ON leases(expires_at)",
         ]
 
         conn = self._conn
@@ -119,10 +130,7 @@ class MetadataStorage(MetadataStorageProtocol):
             logger.info("Conexión de metadata storage cerrada")
 
     async def create_file_metadata(
-        self,
-        path: str,
-        size: int,
-        chunks: List[ChunkTarget]
+        self, path: str, size: int, chunks: List[ChunkTarget]
     ) -> FileMetadata:
         """Crea metadata de archivo."""
         async with self.lock:
@@ -136,7 +144,7 @@ class MetadataStorage(MetadataStorageProtocol):
                     chunk_id=chunk_target.chunk_id,
                     seq_index=i,
                     size=chunk_target.size,
-                    replicas=[]  # Se llenarán en commit
+                    replicas=[],  # Se llenarán en commit
                 )
                 chunk_entries.append(chunk_entry)
 
@@ -146,10 +154,10 @@ class MetadataStorage(MetadataStorageProtocol):
                 size=size,
                 created_at=now,
                 modified_at=now,
-                chunks=chunk_entries
+                chunks=chunk_entries,
             )
 
-            chunks_json = json.dumps([c.model_dump(mode='json') for c in chunk_entries])
+            chunks_json = json.dumps([c.model_dump(mode="json") for c in chunk_entries])
 
             try:
                 conn = self._conn
@@ -158,7 +166,14 @@ class MetadataStorage(MetadataStorageProtocol):
                     INSERT INTO files (file_id, path, size, created_at, modified_at, chunks_json)
                     VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (str(file_id), path, size, now.isoformat(), now.isoformat(), chunks_json)
+                    (
+                        str(file_id),
+                        path,
+                        size,
+                        now.isoformat(),
+                        now.isoformat(),
+                        chunks_json,
+                    ),
                 )
                 conn.commit()
 
@@ -171,30 +186,19 @@ class MetadataStorage(MetadataStorageProtocol):
                 raise DFSMetadataError(f"Error creando metadata: {e}")
 
     async def create_chunk_plan(
-        self,
-        chunk_size: int,
-        target_nodes: List[str]
+        self, chunk_size: int, target_nodes: List[str]
     ) -> ChunkTarget:
         """Crea un plan de chunk con targets."""
-        return ChunkTarget(
-            chunk_id=uuid4(),
-            size=chunk_size,
-            targets=target_nodes
-        )
+        return ChunkTarget(chunk_id=uuid4(), size=chunk_size, targets=target_nodes)
 
-    async def commit_file(
-        self,
-        file_id: UUID,
-        chunks: List[ChunkCommitInfo]
-    ) -> bool:
+    async def commit_file(self, file_id: UUID, chunks: List[ChunkCommitInfo]) -> bool:
         """Confirma la subida de un archivo."""
         async with self.lock:
             try:
                 conn = self._conn
                 # Obtener archivo
                 row = conn.execute(
-                    "SELECT chunks_json FROM files WHERE file_id = ?",
-                    (str(file_id),)
+                    "SELECT chunks_json FROM files WHERE file_id = ?", (str(file_id),)
                 ).fetchone()
 
                 if not row:
@@ -202,7 +206,9 @@ class MetadataStorage(MetadataStorageProtocol):
                     return False
 
                 # Cargar chunks existentes
-                chunk_entries = [ChunkEntry(**c) for c in json.loads(row['chunks_json'])]
+                chunk_entries = [
+                    ChunkEntry(**c) for c in json.loads(row["chunks_json"])
+                ]
                 chunk_map = {str(c.chunk_id): c for c in chunk_entries}
 
                 # Actualizar chunks con checksums y crear réplicas
@@ -220,25 +226,33 @@ class MetadataStorage(MetadataStorageProtocol):
                                 url=self._node_id_to_url(node_id),
                                 state=ChunkState.COMMITTED,
                                 last_heartbeat=datetime.utcnow(),
-                                checksum_verified=True
+                                checksum_verified=True,
                             )
                             chunk.replicas.append(replica)
 
-                        logger.debug(f"Chunk {chunk_id_str}: {len(chunk.replicas)} réplicas")
+                        logger.debug(
+                            f"Chunk {chunk_id_str}: {len(chunk.replicas)} réplicas"
+                        )
                     else:
-                        logger.warning(f"Chunk {chunk_id_str} no encontrado en metadata")
+                        logger.warning(
+                            f"Chunk {chunk_id_str} no encontrado en metadata"
+                        )
 
                 # Guardar
-                chunks_json = json.dumps([c.model_dump(mode='json') for c in chunk_entries])
+                chunks_json = json.dumps(
+                    [c.model_dump(mode="json") for c in chunk_entries]
+                )
                 now = datetime.utcnow().isoformat()
 
                 conn.execute(
                     "UPDATE files SET chunks_json = ?, modified_at = ? WHERE file_id = ?",
-                    (chunks_json, now, str(file_id))
+                    (chunks_json, now, str(file_id)),
                 )
                 conn.commit()
 
-                logger.info(f"Commit exitoso para file_id={file_id}, {len(chunks)} chunks")
+                logger.info(
+                    f"Commit exitoso para file_id={file_id}, {len(chunks)} chunks"
+                )
                 return True
 
             except Exception as e:
@@ -249,8 +263,7 @@ class MetadataStorage(MetadataStorageProtocol):
         """Obtiene metadata de archivo por path."""
         async with self.lock:
             row = self._conn.execute(
-                "SELECT * FROM files WHERE path = ? AND is_deleted = 0",
-                (path,)
+                "SELECT * FROM files WHERE path = ? AND is_deleted = 0", (path,)
             ).fetchone()
 
             if not row:
@@ -259,10 +272,7 @@ class MetadataStorage(MetadataStorageProtocol):
             return self._row_to_file_metadata(row)
 
     async def list_files(
-        self,
-        prefix: Optional[str] = None,
-        limit: int = 100,
-        offset: int = 0
+        self, prefix: Optional[str] = None, limit: int = 100, offset: int = 0
     ) -> List[FileMetadata]:
         """Lista archivos."""
         async with self.lock:
@@ -285,15 +295,12 @@ class MetadataStorage(MetadataStorageProtocol):
             try:
                 conn = self._conn
                 if permanent:
-                    result = conn.execute(
-                        "DELETE FROM files WHERE path = ?",
-                        (path,)
-                    )
+                    result = conn.execute("DELETE FROM files WHERE path = ?", (path,))
                 else:
                     now = datetime.utcnow().isoformat()
                     result = conn.execute(
                         "UPDATE files SET is_deleted = 1, deleted_at = ? WHERE path = ? AND is_deleted = 0",
-                        (now, path)
+                        (now, path),
                     )
 
                 conn.commit()
@@ -310,11 +317,7 @@ class MetadataStorage(MetadataStorageProtocol):
                 return False
 
     async def update_node_heartbeat(
-        self,
-        node_id: str,
-        free_space: int,
-        total_space: int,
-        chunk_ids: List[UUID]
+        self, node_id: str, free_space: int, total_space: int, chunk_ids: List[UUID]
     ) -> None:
         """Actualiza heartbeat de un nodo."""
         async with self.lock:
@@ -324,8 +327,7 @@ class MetadataStorage(MetadataStorageProtocol):
             conn = self._conn
             # Verificar si el nodo existe
             row = conn.execute(
-                "SELECT node_id FROM nodes WHERE node_id = ?",
-                (node_id,)
+                "SELECT node_id FROM nodes WHERE node_id = ?", (node_id,)
             ).fetchone()
 
             if row:
@@ -337,8 +339,14 @@ class MetadataStorage(MetadataStorageProtocol):
                         last_heartbeat = ?, state = ?
                     WHERE node_id = ?
                     """,
-                    (free_space, total_space, len(chunk_ids), now.isoformat(),
-                     NodeState.ACTIVE.value, node_id)
+                    (
+                        free_space,
+                        total_space,
+                        len(chunk_ids),
+                        now.isoformat(),
+                        NodeState.ACTIVE.value,
+                        node_id,
+                    ),
                 )
             else:
                 # Insertar nuevo nodo
@@ -350,14 +358,22 @@ class MetadataStorage(MetadataStorageProtocol):
                     (node_id, host, port, free_space, total_space, chunk_count, last_heartbeat, state)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (node_id, host, port, free_space, total_space, len(chunk_ids),
-                     now.isoformat(), NodeState.ACTIVE.value)
+                    (
+                        node_id,
+                        host,
+                        port,
+                        free_space,
+                        total_space,
+                        len(chunk_ids),
+                        now.isoformat(),
+                        NodeState.ACTIVE.value,
+                    ),
                 )
 
             # Marcar nodos inactivos
             conn.execute(
                 "UPDATE nodes SET state = ? WHERE last_heartbeat < ?",
-                (NodeState.INACTIVE.value, threshold.isoformat())
+                (NodeState.INACTIVE.value, threshold.isoformat()),
             )
 
             conn.commit()
@@ -367,8 +383,7 @@ class MetadataStorage(MetadataStorageProtocol):
         """Obtiene información de un nodo."""
         async with self.lock:
             row = self._conn.execute(
-                "SELECT * FROM nodes WHERE node_id = ?",
-                (node_id,)
+                "SELECT * FROM nodes WHERE node_id = ?", (node_id,)
             ).fetchone()
 
             if not row:
@@ -388,7 +403,9 @@ class MetadataStorage(MetadataStorageProtocol):
     async def get_active_nodes(self) -> List[NodeInfo]:
         """Obtiene nodos activos."""
         async with self.lock:
-            threshold = (datetime.utcnow() - timedelta(seconds=config.node_timeout)).isoformat()
+            threshold = (
+                datetime.utcnow() - timedelta(seconds=config.node_timeout)
+            ).isoformat()
 
             rows = self._conn.execute(
                 """
@@ -396,16 +413,13 @@ class MetadataStorage(MetadataStorageProtocol):
                 WHERE state = ? AND last_heartbeat > ?
                 ORDER BY free_space DESC
                 """,
-                (NodeState.ACTIVE.value, threshold)
+                (NodeState.ACTIVE.value, threshold),
             ).fetchall()
 
             return [self._row_to_node_info(row) for row in rows]
 
     async def acquire_lease(
-        self,
-        path: str,
-        operation: str,
-        timeout_seconds: int
+        self, path: str, operation: str, timeout_seconds: int
     ) -> Optional[LeaseResponse]:
         """Adquiere un lease."""
         async with self.lock:
@@ -416,7 +430,7 @@ class MetadataStorage(MetadataStorageProtocol):
             # Verificar si ya existe un lease activo
             row = self._conn.execute(
                 "SELECT lease_id FROM leases WHERE path = ? AND expires_at > ?",
-                (path, now.isoformat())
+                (path, now.isoformat()),
             ).fetchone()
 
             if row:
@@ -431,23 +445,18 @@ class MetadataStorage(MetadataStorageProtocol):
                 INSERT INTO leases (lease_id, path, operation, expires_at)
                 VALUES (?, ?, ?, ?)
                 """,
-                (str(lease_id), path, operation, expires_at.isoformat())
+                (str(lease_id), path, operation, expires_at.isoformat()),
             )
             self._conn.commit()
 
             logger.info(f"Lease adquirido: {path} (ID: {lease_id})")
-            return LeaseResponse(
-                lease_id=lease_id,
-                path=path,
-                expires_at=expires_at
-            )
+            return LeaseResponse(lease_id=lease_id, path=path, expires_at=expires_at)
 
     async def release_lease(self, lease_id: UUID) -> bool:
         """Libera un lease."""
         async with self.lock:
             result = self._conn.execute(
-                "DELETE FROM leases WHERE lease_id = ?",
-                (str(lease_id),)
+                "DELETE FROM leases WHERE lease_id = ?", (str(lease_id),)
             )
             self._conn.commit()
 
@@ -462,8 +471,7 @@ class MetadataStorage(MetadataStorageProtocol):
         async with self.lock:
             now = datetime.utcnow().isoformat()
             result = self._conn.execute(
-                "DELETE FROM leases WHERE expires_at <= ?",
-                (now,)
+                "DELETE FROM leases WHERE expires_at <= ?", (now,)
             )
 
             if result.rowcount > 0:
@@ -471,31 +479,33 @@ class MetadataStorage(MetadataStorageProtocol):
 
     def _row_to_file_metadata(self, row) -> FileMetadata:
         """Convierte una fila de la BD a FileMetadata."""
-        chunks = [ChunkEntry(**c) for c in json.loads(row['chunks_json'])]
+        chunks = [ChunkEntry(**c) for c in json.loads(row["chunks_json"])]
 
         return FileMetadata(
-            file_id=UUID(row['file_id']),
-            path=row['path'],
-            size=row['size'],
-            created_at=datetime.fromisoformat(row['created_at']),
-            modified_at=datetime.fromisoformat(row['modified_at']),
+            file_id=UUID(row["file_id"]),
+            path=row["path"],
+            size=row["size"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            modified_at=datetime.fromisoformat(row["modified_at"]),
             chunks=chunks,
-            is_deleted=bool(row['is_deleted']),
-            deleted_at=datetime.fromisoformat(row['deleted_at']) if row['deleted_at'] else None
+            is_deleted=bool(row["is_deleted"]),
+            deleted_at=datetime.fromisoformat(row["deleted_at"])
+            if row["deleted_at"]
+            else None,
         )
 
     def _row_to_node_info(self, row) -> NodeInfo:
         """Convierte una fila de la BD a NodeInfo."""
         return NodeInfo(
-            node_id=row['node_id'],
-            host=row['host'],
-            port=row['port'],
-            rack=row['rack'],
-            free_space=row['free_space'],
-            total_space=row['total_space'],
-            chunk_count=row['chunk_count'],
-            last_heartbeat=datetime.fromisoformat(row['last_heartbeat']),
-            state=NodeState(row['state'])
+            node_id=row["node_id"],
+            host=row["host"],
+            port=row["port"],
+            rack=row["rack"],
+            free_space=row["free_space"],
+            total_space=row["total_space"],
+            chunk_count=row["chunk_count"],
+            last_heartbeat=datetime.fromisoformat(row["last_heartbeat"]),
+            state=NodeState(row["state"]),
         )
 
     def _node_id_to_url(self, node_id: str) -> str:
@@ -505,7 +515,7 @@ class MetadataStorage(MetadataStorageProtocol):
 
     def _parse_node_id(self, node_id: str) -> Tuple[str, int]:
         """Parsea node_id para extraer host y puerto."""
-        parts = node_id.split('-')
+        parts = node_id.split("-")
         if len(parts) >= 3:
             host = parts[1]
             try:
@@ -525,7 +535,7 @@ class MetadataStorage(MetadataStorageProtocol):
 
             # Estadísticas de chunks
             total_chunks = 0
-            total_size = files_row['total_size'] or 0
+            total_size = files_row["total_size"] or 0
 
             files = await self.list_files(limit=10000)
             for file in files:
@@ -540,12 +550,12 @@ class MetadataStorage(MetadataStorageProtocol):
             used_space = total_space - free_space
 
             return {
-                "total_files": files_row['count'],
+                "total_files": files_row["count"],
                 "total_chunks": total_chunks,
                 "total_size": total_size,
                 "total_nodes": len(nodes),
                 "active_nodes": len(active_nodes),
                 "total_space": total_space,
                 "used_space": used_space,
-                "free_space": free_space
+                "free_space": free_space,
             }
