@@ -3,12 +3,12 @@ param(
     [int]$nodes = 3
 )
 
-# Script para iniciar todo el sistema DFS - Version parametrizable
+# Script para iniciar todo el sistema DFS
 $ErrorActionPreference = "Continue"
 
 Write-Host "=== Iniciando Sistema DFS ==="
 
-# Obtener el directorio donde esta el script
+# Obtiene el directorio donde esta el script
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Split-Path -Parent $scriptDir
 $backendRoot = Join-Path $projectRoot "backend"
@@ -19,7 +19,7 @@ if (-not (Test-Path $backendRoot)) {
 }
 
 function Get-PythonCommand {
-    # Primero buscar en el venv del proyecto
+    # Primero busca en el venv del proyecto
     $venvPython = Join-Path $backendRoot ".venv\Scripts\python.exe"
     if (Test-Path $venvPython) {
         try {
@@ -101,7 +101,7 @@ $tempDir = if ($IsWindows -or $env:OS -match "Windows") { $env:TEMP } else { "/t
 $metadataDir = Join-Path $tempDir "dfs-metadata"
 if (-not (Test-Path $metadataDir)) { New-Item -Path $metadataDir -ItemType Directory -Force | Out-Null }
 
-# Crear directorios por defecto para nodos (se crearán también por nodo en el loop)
+# Crea los directorios por defecto para los nodos (se crearán también por nodo en el loop)
 Write-Host "Creando directorios de datos..." -ForegroundColor Yellow
 for ($i = 1; $i -le $nodes; $i++) {
     $d = Join-Path $tempDir ("dfs-data-node{0}" -f $i)
@@ -112,7 +112,7 @@ Write-Host "  Ya existe/creado: $metadataDir"
 # PYTHONPATH
 $env:PYTHONPATH = "$backendRoot$([System.IO.Path]::PathSeparator)$env:PYTHONPATH"
 
-# Verificar import backend
+# Verifica el import del backend
 try {
     Write-Host "Verificando paquete backend..." -ForegroundColor Yellow
     & $pythonCmd -c "import backend; print('Paquete backend encontrado')"
@@ -121,14 +121,14 @@ try {
     exit 1
 }
 
-# Variables Metadata (configuración fija)
+# Variables de Metadata (configuración fija)
 $env:DFS_METADATA_HOST = "0.0.0.0"
 $env:DFS_METADATA_PORT = "8000"
 $env:DFS_DB_PATH = Join-Path $metadataDir "dfs_metadata.db"
 
 Write-Host "Configuracion completada. Iniciando servicios..." -ForegroundColor Cyan
 
-# Iniciar Metadata Service (igual que antes)
+# Inicia el Metadata Service (igual que antes)
 $metadataLog = Join-Path $tempDir "dfs-metadata.log"
 $metadataErrLog = Join-Path $tempDir "dfs-metadata-errors.log"
 
@@ -147,7 +147,7 @@ try {
     exit 1
 }
 
-# Esperar puerto metadata
+# Espera el puerto de metadata
 Write-Host "Esperando a que el puerto 8000 este disponible..."
 $portReady = $false; $portRetries = 0; $maxPortRetries = 30
 while (-not $portReady -and $portRetries -lt $maxPortRetries) {
@@ -170,7 +170,7 @@ if (-not $portReady) {
     exit 1
 }
 
-# Verificar health endpoint
+# Consume el health endpoint para verificar el estado del servidor
 Write-Host "Verificando health endpoint..."
 $maxRetries = 10; $retryCount = 0; $metadataReady = $false
 while ($retryCount -lt $maxRetries -and -not $metadataReady) {
@@ -193,7 +193,7 @@ while ($retryCount -lt $maxRetries -and -not $metadataReady) {
 
 Write-Host "Metadata Service listo y respondiendo!" -ForegroundColor Green
 
-# Lanzar N DataNodes (parametrizable)
+# Lanza N DataNodes (parametrizable)
 Write-Host "Iniciando $nodes DataNode(s)..."
 $basePort = 8001
 $global:DATANODE_JOBS = @()
@@ -207,7 +207,7 @@ for ($i = 1; $i -le $nodes; $i++) {
 
     Write-Host "  Iniciando DataNode $i en puerto $port (Storage: $storagePath)"
 
-    # Preparar env vars para el job
+    # Prepara env vars para el job
     $envVars = @{
         "DFS_METADATA_HOST" = "localhost"
         "DFS_METADATA_PORT" = "8000"

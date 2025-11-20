@@ -25,7 +25,7 @@ export default function Activity() {
                 Las funciones de monitoreo y registro de actividades estarán disponibles próximamente.
               </p>
               <button
-                onClick={() => toast.info("Feature coming soon")}
+                onClick={() => toast.info("Función disponible próximamente")}
                 className="mt-4 text-primary hover:underline"
               >
                 Más información

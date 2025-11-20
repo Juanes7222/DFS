@@ -81,7 +81,7 @@ export default function Nodes() {
       setNodes(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load nodes");
+      setError(err instanceof Error ? err.message : "Error al cargar los nodos");
     } finally {
       setLoading(false);
     }

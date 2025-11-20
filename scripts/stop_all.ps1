@@ -1,28 +1,23 @@
 #!/usr/bin/env pwsh
-# Script para detener todo el sistema DFS - Adaptado para estructura backend/
-
-# Configurar UTF-8 para la terminal
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.Encoding]::UTF8
-chcp 65001 | Out-Null  # Solo en Windows
+# Script para detener todo el sistema DFS - Compatible con Jobs de PowerShell
 
 $ErrorActionPreference = "Continue"
 
 Write-Host "=== Deteniendo Sistema DFS ===" -ForegroundColor Cyan
 
 $tempDir = if ($IsWindows -or $env:OS -match "Windows") { $env:TEMP } else { "/tmp" }
-$pidsFile = Join-Path $tempDir "dfs-system-pids.txt"
+$jobsFile = Join-Path $tempDir "dfs-system-jobs.txt"
 
 $processesStopped = 0
 
-# Primero intentar con Docker Compose si está disponible
+# Primero intenta con Docker Compose si está disponible
 if (Get-Command docker-compose -ErrorAction SilentlyContinue) {
     $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
     $projectRoot = Split-Path -Parent $scriptDir
     $composeFile = Join-Path $projectRoot "docker-compose.yml"
     
     if (Test-Path $composeFile) {
-        Write-Host "🐳 Deteniendo servicios Docker..." -ForegroundColor Yellow
+        Write-Host "Deteniendo servicios Docker..." -ForegroundColor Yellow
         Set-Location $projectRoot
         
         # Verificar si hay servicios en ejecución
@@ -34,82 +29,135 @@ if (Get-Command docker-compose -ErrorAction SilentlyContinue) {
                 Write-Host "Servicios Docker detenidos" -ForegroundColor Green
                 $processesStopped++
             } else {
-                Write-Host " No se pudieron detener algunos servicios Docker" -ForegroundColor Yellow
+                Write-Host "No se pudieron detener algunos servicios Docker" -ForegroundColor Yellow
             }
         } else {
-            Write-Host "No hay servicios Docker en ejecución" -ForegroundColor Gray
+            Write-Host "No hay servicios Docker en ejecucion" -ForegroundColor Gray
         }
     }
 }
 
-# Luego detener procesos nativos
-if (Test-Path $pidsFile) {
+# Detener Jobs de PowerShell (nuevo método usado en start_all.ps1)
+if (Test-Path $jobsFile) {
     Write-Host ""
-    Write-Host "Leyendo PIDs de $pidsFile..." -ForegroundColor Yellow
+    Write-Host "Leyendo Jobs de $jobsFile..." -ForegroundColor Yellow
     
-    $pidLines = Get-Content $pidsFile
-    $pids = @{}
+    $jobLines = Get-Content $jobsFile
+    $jobsToStop = @()
     
-    foreach ($line in $pidLines) {
-        if ($line -match '^(\w+)=(\d+)$') {
-            $service = $matches[1]
-            $processId = $matches[2]  # Cambiado de 'pid' a 'processId'
-            $pids[$service] = $processId
+    foreach ($line in $jobLines) {
+        if ($line -match '^(\w+)=(.+)$') {
+            $jobType = $matches[1]
+            $jobIds = $matches[2] -split ','
+            
+            foreach ($jobId in $jobIds) {
+                if ($jobId -match '^\d+$') {
+                    $jobsToStop += [PSCustomObject]@{
+                        Type = $jobType
+                        Id = [int]$jobId
+                    }
+                }
+            }
         }
     }
     
-    # Detener procesos en orden inverso (DataNodes primero, Metadata último)
-    $stopOrder = @("DATANODE3", "DATANODE2", "DATANODE1", "METADATA")
+    # Detener jobs en orden inverso (DataNodes primero, Metadata último)
+    $stopOrder = @("DATANODE_JOBS", "METADATA_JOB")
     
-    foreach ($service in $stopOrder) {
-        if ($pids.ContainsKey($service)) {
-            $processId = $pids[$service]
+    foreach ($jobType in $stopOrder) {
+        $jobs = $jobsToStop | Where-Object { $_.Type -eq $jobType }
+        foreach ($job in $jobs) {
             try {
-                # Removida la variable no utilizada 'process'
-                Get-Process -Id $processId -ErrorAction Stop | Out-Null
-                Write-Host "Deteniendo $service (PID: $processId)..." -ForegroundColor Yellow
-                Stop-Process -Id $processId -Force
-                Write-Host "$service detenido" -ForegroundColor Green
+                $jobInfo = Get-Job -Id $job.Id -ErrorAction Stop
+                Write-Host "Deteniendo $($job.Type) (Job ID: $($job.Id))..." -ForegroundColor Yellow
+                Stop-Job -Id $job.Id -ErrorAction Stop
+                Remove-Job -Id $job.Id -Force -ErrorAction Stop
+                Write-Host "$($job.Type) detenido" -ForegroundColor Green
                 $processesStopped++
             }
             catch {
-                Write-Host "$service (PID: $processId) no encontrado o ya detenido" -ForegroundColor Gray
+                Write-Host "$($job.Type) (Job ID: $($job.Id)) no encontrado o ya detenido" -ForegroundColor Gray
             }
         }
     }
     
-    Remove-Item $pidsFile -Force
-    Write-Host "Archivo de PIDs removido" -ForegroundColor Green
+    Remove-Item $jobsFile -Force
+    Write-Host "Archivo de Jobs removido" -ForegroundColor Green
 }
 else {
-    Write-Host "Archivo de PIDs no encontrado en: $pidsFile" -ForegroundColor Gray
+    Write-Host "Archivo de Jobs no encontrado en: $jobsFile" -ForegroundColor Gray
+    Write-Host "Buscando Jobs activos de DFS..." -ForegroundColor Yellow
+    
+    # Buscar jobs activos que puedan ser de DFS
+    $dfsJobs = Get-Job | Where-Object { 
+        $_.Command -like "*metadata*" -or 
+        $_.Command -like "*datanode*" -or
+        $_.Name -like "*dfs*" -or
+        ($_.ChildJobs -and $_.ChildJobs.Command -like "*python*backend*")
+    }
+    
+    if ($dfsJobs) {
+        Write-Host "Jobs de DFS encontrados:" -ForegroundColor Cyan
+        foreach ($job in $dfsJobs) {
+            Write-Host "  Job ID: $($job.Id) - Estado: $($job.State) - Comando: $($job.Command)" -ForegroundColor White
+        }
+        
+        $response = Read-Host "¿Desea detener estos jobs? (S/N)"
+        if ($response -eq "S" -or $response -eq "s" -or $response -eq "Y" -or $response -eq "y") {
+            foreach ($job in $dfsJobs) {
+                Write-Host "Deteniendo Job $($job.Id)..." -ForegroundColor Yellow
+                try {
+                    Stop-Job -Id $job.Id -ErrorAction Stop
+                    Remove-Job -Id $job.Id -Force -ErrorAction Stop
+                    Write-Host "Job $($job.Id) detenido" -ForegroundColor Green
+                    $processesStopped++
+                }
+                catch {
+                    Write-Host "No se pudo detener Job $($job.Id)" -ForegroundColor Red
+                }
+            }
+        }
+    } else {
+        Write-Host "No se encontraron Jobs activos de DFS" -ForegroundColor Green
+    }
 }
 
-# Buscar procesos residuales de backend
+# Buscar procesos residuales de backend (como respaldo)
 Write-Host ""
 Write-Host "Buscando procesos residuales de backend..." -ForegroundColor Yellow
 
 $backendProcesses = Get-Process python* -ErrorAction SilentlyContinue | Where-Object {
-    $_.CommandLine -like "*backend.metadata.server*" -or 
-    $_.CommandLine -like "*backend.datanode.server*" -or
-    $_.CommandLine -like "*uvicorn*backend*" -or
-    $_.CommandLine -like "*python*backend*"
+    $_.ProcessName -eq "python" -or 
+    $_.ProcessName -eq "python3" -or
+    $_.ProcessName -eq "pythonw"
+} | Where-Object {
+    $_.CommandLine -like "*metadata*server*" -or 
+    $_.CommandLine -like "*datanode*server*" -or
+    $_.CommandLine -like "*uvicorn*" -or
+    $_.CommandLine -like "*backend*" -or
+    $_.CommandLine -like "*dfs*"
 }
 
 if ($backendProcesses) {
     Write-Host "Procesos backend residuales encontrados:" -ForegroundColor Cyan
     foreach ($proc in $backendProcesses) {
-        $cmdLine = if ($proc.CommandLine) { $proc.CommandLine } else { "N/A" }
+        $cmdLine = if ($proc.CommandLine) { 
+            if ($proc.CommandLine.Length -gt 100) { 
+                $proc.CommandLine.Substring(0, 100) + "..." 
+            } else { 
+                $proc.CommandLine 
+            }
+        } else { "N/A" }
         Write-Host "  PID: $($proc.Id) - $($proc.ProcessName)" -ForegroundColor White
         Write-Host "    Comando: $cmdLine" -ForegroundColor Gray
     }
     
-    $response = Read-Host "`n¿Desea detener estos procesos? (S/N)"
+    $response = Read-Host "¿Desea detener estos procesos? (S/N)"
     if ($response -eq "S" -or $response -eq "s" -or $response -eq "Y" -or $response -eq "y") {
         foreach ($proc in $backendProcesses) {
             Write-Host "Deteniendo proceso $($proc.Id)..." -ForegroundColor Yellow
             try {
-                Stop-Process -Id $proc.Id -Force
+                Stop-Process -Id $proc.Id -Force -ErrorAction Stop
                 Write-Host "Proceso $($proc.Id) detenido" -ForegroundColor Green
                 $processesStopped++
             }
@@ -148,37 +196,58 @@ foreach ($envVar in $envVars) {
 
 Write-Host "$cleanedVars variables de entorno limpiadas" -ForegroundColor Green
 
-# Limpiar archivos temporales de DFS
+# Limpiar archivos temporales de DFS (versión mejorada)
 Write-Host ""
-Write-Host "🗑️  Limpiando archivos temporales..." -ForegroundColor Yellow
+Write-Host "Limpiando archivos temporales..." -ForegroundColor Yellow
 
 $tempFiles = @(
     "$tempDir/dfs-*.log",
-    "$tempDir/dfs-*-errors.log",
-    "$tempDir/dfs-data-*",
+    "$tempDir/dfs-*-errors.log"
+)
+
+$tempDirs = @(
+    "$tempDir/dfs-data-node1",
+    "$tempDir/dfs-data-node2", 
+    "$tempDir/dfs-data-node3",
     "$tempDir/dfs-metadata"
 )
 
 $cleanedFiles = 0
+$cleanedDirs = 0
+
+# Limpiar archivos
 foreach ($pattern in $tempFiles) {
     Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue | ForEach-Object {
         try {
-            Remove-Item $_.FullName -Recurse -Force -ErrorAction Stop
-            Write-Host "  Limpiado: $($_.Name)" -ForegroundColor Gray
+            Remove-Item $_.FullName -Force -ErrorAction Stop
+            Write-Host "  Limpiado archivo: $($_.Name)" -ForegroundColor Gray
             $cleanedFiles++
         } catch {
-            Write-Host "  No se pudo limpiar: $($_.Name)" -ForegroundColor DarkYellow
+            Write-Host "  No se pudo limpiar archivo: $($_.Name)" -ForegroundColor DarkYellow
         }
     }
 }
 
-Write-Host "$cleanedFiles archivos temporales limpiados" -ForegroundColor Green
+# Limpiar directorios
+foreach ($dir in $tempDirs) {
+    if (Test-Path $dir) {
+        try {
+            Remove-Item $dir -Recurse -Force -ErrorAction Stop
+            Write-Host "  Limpiado directorio: $(Split-Path $dir -Leaf)" -ForegroundColor Gray
+            $cleanedDirs++
+        } catch {
+            Write-Host "  No se pudo limpiar directorio: $(Split-Path $dir -Leaf)" -ForegroundColor DarkYellow
+        }
+    }
+}
+
+Write-Host "$cleanedFiles archivos y $cleanedDirs directorios temporales limpiados" -ForegroundColor Green
 
 Write-Host ""
 if ($processesStopped -gt 0) {
-    Write-Host "Sistema DFS detenido completamente. $processesStopped procesos/containers terminados." -ForegroundColor Green
+    Write-Host "Sistema DFS detenido completamente. $processesStopped procesos/jobs terminados." -ForegroundColor Green
 } else {
-    Write-Host "ℹ️  No se encontraron procesos de DFS en ejecución." -ForegroundColor Cyan
+    Write-Host "No se encontraron procesos de DFS en ejecucion." -ForegroundColor Cyan
 }
 
 Write-Host ""
@@ -187,5 +256,6 @@ Write-Host "  Con Docker: ./scripts/start.ps1" -ForegroundColor White
 Write-Host "  Sin Docker: ./scripts/start_all.ps1" -ForegroundColor White
 Write-Host ""
 Write-Host "Para verificar procesos residuales:" -ForegroundColor Cyan
+Write-Host "  Get-Job" -ForegroundColor White
 Write-Host "  Get-Process python* | Where-Object { `$_.CommandLine -like '*backend*' }" -ForegroundColor White
 Write-Host "  docker-compose ps" -ForegroundColor White

@@ -82,7 +82,7 @@ export default function Files() {
       setFiles(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load files");
+      setError(err instanceof Error ? err.message : "Error al cargar los archivos");
     } finally {
       setLoading(false);
     }
@@ -90,7 +90,7 @@ export default function Files() {
 
   async function handleUpload() {
     if (!selectedFile || !remotePath) {
-      toast.error("Please select a file and enter a remote path");
+      toast.error("Selecciona un archivo e ingresa una ruta remota");
       return;
     }
 
@@ -102,14 +102,14 @@ export default function Files() {
         setUploadProgress(progress);
       });
 
-      toast.success("File uploaded successfully");
+      toast.success("Archivo subido correctamente");
       setUploadDialogOpen(false);
       setSelectedFile(null);
       setRemotePath("");
       setUploadProgress(0);
       loadFiles();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed");
+      toast.error(err instanceof Error ? err.message : "Error al subir el archivo");
     } finally {
       setUploading(false);
     }
@@ -117,7 +117,7 @@ export default function Files() {
 
   async function handleDownload(file: FileMetadata) {
     try {
-      toast.info("Downloading file...");
+      toast.info("Descargando archivo...");
       
       const blob = await api.downloadFile(file.path, (progress) => {
         // Could show progress in toast
@@ -133,21 +133,21 @@ export default function Files() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast.success("File downloaded successfully");
+      toast.success("Archivo descargado correctamente");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Download failed");
+      toast.error(err instanceof Error ? err.message : "Error al descargar el archivo");
     }
   }
 
   async function handleDelete(file: FileMetadata) {
-    if (!confirm(`Delete ${file.path}?`)) return;
+    if (!confirm(`¿Deseas eliminar el archivo en la ruta ${file.path}?`)) return;
 
     try {
       await api.deleteFile(file.path, false);
-      toast.success("File deleted");
+      toast.success("Archivo eliminado");
       loadFiles();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Delete failed");
+      toast.error(err instanceof Error ? err.message : "Error al borrar el archivo");
     }
   }
 

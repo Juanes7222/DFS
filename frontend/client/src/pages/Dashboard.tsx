@@ -44,7 +44,7 @@ export default function Dashboard() {
       setFiles(filesData);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data");
+      setError(err instanceof Error ? err.message : "Error al cargar los datos");
     } finally {
       setLoading(false);
     }
