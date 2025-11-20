@@ -31,7 +31,7 @@ if (Get-Command docker-compose -ErrorAction SilentlyContinue) {
             Write-Host "Deteniendo contenedores Docker..." -ForegroundColor Yellow
             docker-compose down
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "✅ Servicios Docker detenidos" -ForegroundColor Green
+                Write-Host "Servicios Docker detenidos" -ForegroundColor Green
                 $processesStopped++
             } else {
                 Write-Host "⚠️  No se pudieron detener algunos servicios Docker" -ForegroundColor Yellow
@@ -69,7 +69,7 @@ if (Test-Path $pidsFile) {
                 Get-Process -Id $processId -ErrorAction Stop | Out-Null
                 Write-Host "Deteniendo $service (PID: $processId)..." -ForegroundColor Yellow
                 Stop-Process -Id $processId -Force
-                Write-Host "✅ $service detenido" -ForegroundColor Green
+                Write-Host "$service detenido" -ForegroundColor Green
                 $processesStopped++
             }
             catch {
@@ -110,18 +110,18 @@ if ($backendProcesses) {
             Write-Host "Deteniendo proceso $($proc.Id)..." -ForegroundColor Yellow
             try {
                 Stop-Process -Id $proc.Id -Force
-                Write-Host "✅ Proceso $($proc.Id) detenido" -ForegroundColor Green
+                Write-Host "Proceso $($proc.Id) detenido" -ForegroundColor Green
                 $processesStopped++
             }
             catch {
-                Write-Host "❌ No se pudo detener proceso $($proc.Id)" -ForegroundColor Red
+                Write-Host "No se pudo detener proceso $($proc.Id)" -ForegroundColor Red
             }
         }
     } else {
         Write-Host "ℹ️  Procesos no detenidos por el usuario" -ForegroundColor Yellow
     }
 } else {
-    Write-Host "✅ No se encontraron procesos backend residuales" -ForegroundColor Green
+    Write-Host "No se encontraron procesos backend residuales" -ForegroundColor Green
 }
 
 # Limpiar variables de entorno
@@ -146,7 +146,7 @@ foreach ($envVar in $envVars) {
     }
 }
 
-Write-Host "✅ $cleanedVars variables de entorno limpiadas" -ForegroundColor Green
+Write-Host "$cleanedVars variables de entorno limpiadas" -ForegroundColor Green
 
 # Limpiar archivos temporales de DFS
 Write-Host ""
@@ -172,11 +172,11 @@ foreach ($pattern in $tempFiles) {
     }
 }
 
-Write-Host "✅ $cleanedFiles archivos temporales limpiados" -ForegroundColor Green
+Write-Host "$cleanedFiles archivos temporales limpiados" -ForegroundColor Green
 
 Write-Host ""
 if ($processesStopped -gt 0) {
-    Write-Host "✅ Sistema DFS detenido completamente. $processesStopped procesos/containers terminados." -ForegroundColor Green
+    Write-Host "Sistema DFS detenido completamente. $processesStopped procesos/containers terminados." -ForegroundColor Green
 } else {
     Write-Host "ℹ️  No se encontraron procesos de DFS en ejecución." -ForegroundColor Cyan
 }

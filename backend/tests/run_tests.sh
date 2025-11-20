@@ -21,13 +21,13 @@ export PYTHONPATH="$BACKEND_ROOT:$PYTHONPATH"
 
 # Verificar que Python está disponible
 if ! command -v $PYTHON_CMD &> /dev/null; then
-    echo "❌ Python no encontrado. Usa PYTHON_CMD para especificar el comando."
+    echo "Python no encontrado. Usa PYTHON_CMD para especificar el comando."
     exit 1
 fi
 
 # Verificar que podemos importar backend
 if ! $PYTHON_CMD -c "import backend" &> /dev/null; then
-    echo "❌ No se puede importar el paquete backend"
+    echo "No se puede importar el paquete backend"
     echo "PYTHONPATH: $PYTHONPATH"
     exit 1
 fi
@@ -35,12 +35,12 @@ fi
 # Verificar que los servicios están corriendo
 echo "🔍 Verificando servicios..."
 if ! curl -s --retry 3 --retry-delay 2 "$METADATA_URL/api/v1/health" > /dev/null; then
-    echo "❌ Metadata Service no está disponible en $METADATA_URL"
+    echo "Metadata Service no está disponible en $METADATA_URL"
     echo "   Inicia los servicios con: ./scripts/start_all.ps1"
     exit 1
 fi
 
-echo "✅ Metadata Service está disponible"
+echo "Metadata Service está disponible"
 
 # Configurar variables de entorno para tests
 export DFS_METADATA_URL="$METADATA_URL"
@@ -60,9 +60,9 @@ $PYTHON_CMD -m pytest test_e2e.py -v \
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then
-    echo "✅ Todos los tests pasaron!"
+    echo "Todos los tests pasaron!"
 else
-    echo "❌ Algunos tests fallaron"
+    echo "Algunos tests fallaron"
 fi
 
 exit $EXIT_CODE

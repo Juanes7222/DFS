@@ -11,12 +11,12 @@ Write-Host "🚀 Iniciando DFS System con Docker..." -ForegroundColor Cyan
 
 # Verificar Docker
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Host "❌ Docker no está instalado o no está en el PATH" -ForegroundColor Red
+    Write-Host "Docker no está instalado o no está en el PATH" -ForegroundColor Red
     exit 1
 }
 
 if (-not (Get-Command docker-compose -ErrorAction SilentlyContinue)) {
-    Write-Host "❌ Docker Compose no está instalado o no está en el PATH" -ForegroundColor Red
+    Write-Host "Docker Compose no está instalado o no está en el PATH" -ForegroundColor Red
     exit 1
 }
 
@@ -27,7 +27,7 @@ $projectRoot = Split-Path -Parent $scriptDir
 # Verificar que docker-compose.yml existe
 $composeFile = Join-Path $projectRoot "docker-compose.yml"
 if (-not (Test-Path $composeFile)) {
-    Write-Host "❌ No se encuentra docker-compose.yml en: $projectRoot" -ForegroundColor Red
+    Write-Host "No se encuentra docker-compose.yml en: $projectRoot" -ForegroundColor Red
     
     # Crear docker-compose.yml básico si no existe
     Write-Host "📝 Creando docker-compose.yml básico..." -ForegroundColor Yellow
@@ -111,7 +111,7 @@ volumes:
 "@
     
     $composeContent | Out-File -FilePath $composeFile -Encoding UTF8
-    Write-Host "✅ docker-compose.yml creado" -ForegroundColor Green
+    Write-Host "docker-compose.yml creado" -ForegroundColor Green
 }
 
 # Verificar que existe Dockerfile
@@ -140,7 +140,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 "@
     
     $dockerfileContent | Out-File -FilePath $dockerfile -Encoding UTF8
-    Write-Host "✅ Dockerfile creado" -ForegroundColor Green
+    Write-Host "Dockerfile creado" -ForegroundColor Green
 }
 
 # Construir imágenes
@@ -149,7 +149,7 @@ Set-Location $projectRoot
 docker-compose build
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Error construyendo imágenes Docker" -ForegroundColor Red
+    Write-Host "Error construyendo imágenes Docker" -ForegroundColor Red
     exit 1
 }
 
@@ -158,7 +158,7 @@ Write-Host "🔄 Iniciando servicios..." -ForegroundColor Yellow
 docker-compose up -d
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Error iniciando servicios con Docker Compose" -ForegroundColor Red
+    Write-Host "Error iniciando servicios con Docker Compose" -ForegroundColor Red
     exit 1
 }
 
@@ -173,9 +173,9 @@ docker-compose ps
 # Verificar salud del Metadata Service
 try {
     $healthResponse = Invoke-RestMethod -Uri "http://localhost:8000/api/v1/health" -TimeoutSec 10
-    Write-Host "✅ Metadata Service: $($healthResponse.status)" -ForegroundColor Green
+    Write-Host "Metadata Service: $($healthResponse.status)" -ForegroundColor Green
 } catch {
-    Write-Host "❌ Metadata Service no responde" -ForegroundColor Red
+    Write-Host "Metadata Service no responde" -ForegroundColor Red
     Write-Host "Revisa los logs con: docker-compose logs metadata-service" -ForegroundColor Yellow
 }
 
@@ -183,7 +183,7 @@ try {
 try {
     $nodesResponse = Invoke-RestMethod -Uri "http://localhost:8000/api/v1/nodes" -TimeoutSec 5
     $activeNodes = $nodesResponse | Where-Object { $_.state -eq "active" }
-    Write-Host "✅ $($activeNodes.Count) DataNodes activos" -ForegroundColor Green
+    Write-Host "$($activeNodes.Count) DataNodes activos" -ForegroundColor Green
     
     # Mostrar información de nodos
     foreach ($node in $activeNodes) {

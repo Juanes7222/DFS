@@ -8,7 +8,7 @@ __version__ = "1.0.0"
 __author__ = "DFS Team"
 __email__ = "team@dfs.example.com"
 
-# Componentes principales para acceso directo
+# Re-exportar componentes principales para acceso directo
 from backend.core.config import config, DFSConfig
 from backend.core.exceptions import (
     DFSError,
@@ -26,9 +26,10 @@ __all__ = [
     # Configuración
     "config",
     "DFSConfig",
+    
     # Excepciones
     "DFSError",
-    "DFSClientError",
+    "DFSClientError", 
     "DFSMetadataError",
     "DFSStorageError",
     "DFSNodeUnavailableError",

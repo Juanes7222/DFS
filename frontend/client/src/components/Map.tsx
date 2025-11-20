@@ -68,7 +68,7 @@
  * - new google.maps.BicyclingLayer().setMap(map);
  *
  * -------------------------------
- * ✅ SUMMARY
+ * SUMMARY
  * - “map-attached” → AdvancedMarkerElement, DirectionsRenderer, Layers.
  * - “standalone” → Geocoder, DirectionsService, DistanceMatrixService, ElevationService.
  * - “data-only” → Place, Geometry utilities.
