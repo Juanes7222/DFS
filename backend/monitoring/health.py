@@ -8,8 +8,8 @@ from typing import Dict, Any, Optional
 
 import httpx
 
-from backend.core.config import config
-from backend.shared.models import HealthResponse
+from core.config import config
+from shared.models import HealthResponse
 
 logger = logging.getLogger(__name__)
 

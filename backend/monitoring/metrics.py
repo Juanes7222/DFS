@@ -150,9 +150,6 @@ replication_lag = Gauge(
 # Métricas de leases
 active_leases = Gauge("dfs_active_leases", "Number of active leases", registry=registry)
 
-# ============================================================================
-# FUNCIONALIDAD PRINCIPAL
-# ============================================================================
 
 
 def metrics_endpoint():
