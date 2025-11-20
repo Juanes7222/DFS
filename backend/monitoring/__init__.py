@@ -2,7 +2,7 @@
 Sistema de monitoreo y métricas para DFS
 """
 
-from monitoring.metrics import (
+from .metrics import (
     metrics_endpoint,
     MetricsMiddleware,
     update_system_metrics,
@@ -18,7 +18,7 @@ from monitoring.metrics import (
     update_lease_metrics,
     get_metrics_health,
 )
-from monitoring.health import (
+from .health import (
     HealthChecker,
     check_external_service_health,
     check_metadata_service_health,

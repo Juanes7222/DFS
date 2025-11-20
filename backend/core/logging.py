@@ -2,7 +2,7 @@
 
 import logging
 import logging.config
-from core.config import config
+from .config import config
 
 
 def setup_logging():

@@ -2,8 +2,9 @@
 Módulos core del sistema DFS
 """
 
-from core.config import config, DFSConfig
-from core.exceptions import (
+# Cambiar imports relativos incorrectos
+from .config import config, DFSConfig
+from .exceptions import (
     DFSError,
     DFSClientError,
     DFSMetadataError,
@@ -14,7 +15,7 @@ from core.exceptions import (
     DFSSecurityError,
     DFSConfigurationError,
 )
-from core.logging import setup_logging
+from .logging import setup_logging
 
 __all__ = [
     "config",

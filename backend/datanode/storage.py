@@ -11,10 +11,10 @@ from uuid import UUID
 
 import httpx
 
-from core.config import config
-from core.exceptions import DFSStorageError
-from shared.utils import calculate_checksum
-from shared.protocols import ChunkStorageProtocol
+from backend.core.config import config
+from backend.core.exceptions import DFSStorageError
+from backend.shared.utils import calculate_checksum
+from backend.shared.protocols import ChunkStorageProtocol
 
 logger = logging.getLogger(__name__)
 

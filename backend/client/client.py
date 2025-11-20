@@ -9,14 +9,14 @@ from uuid import UUID
 
 import httpx
 
-from core.config import config
-from core.exceptions import (
+from backend.core.config import config
+from backend.core.exceptions import (
     DFSClientError,
     DFSMetadataError,
     DFSNodeUnavailableError,
     DFSChunkNotFoundError,
 )
-from shared.models import (
+from backend.shared.models import (
     ChunkCommitInfo,
     CommitRequest,
     FileMetadata,
@@ -24,7 +24,7 @@ from shared.models import (
     UploadInitRequest,
     UploadInitResponse,
 )
-from shared.utils import calculate_checksum, split_into_chunks
+from backend.shared.utils import calculate_checksum, split_into_chunks
 
 logger = logging.getLogger(__name__)
 

@@ -13,10 +13,10 @@ from uuid import UUID
 from fastapi import FastAPI, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from core.config import config
-from backend.metadata.storage import MetadataStorage
-from backend.metadata.replicator import ReplicationManager
-from backend.metadata.leases import LeaseManager
+from backend.core.config import config
+from .storage import MetadataStorage
+from .replicator import ReplicationManager
+from .leases import LeaseManager
 from backend.monitoring.metrics import (
     metrics_endpoint,
     MetricsMiddleware,

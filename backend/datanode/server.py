@@ -7,11 +7,11 @@ from uuid import UUID
 from fastapi import FastAPI, HTTPException, UploadFile, Query
 from fastapi.responses import StreamingResponse
 
-from core.config import config
-from core.exceptions import DFSStorageError
-from datanode.storage import ChunkStorage
-from datanode.heartbeat import HeartbeatManager
-from monitoring.metrics import metrics_endpoint, MetricsMiddleware
+from backend.core.config import config
+from backend.core.exceptions import DFSStorageError
+from .storage import ChunkStorage
+from .heartbeat import HeartbeatManager
+from backend.monitoring.metrics import metrics_endpoint, MetricsMiddleware
 
 logger = logging.getLogger(__name__)
 

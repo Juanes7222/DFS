@@ -7,7 +7,7 @@ from uuid import UUID
 
 import httpx
 
-from core.config import config
+from backend.core.config import config
 
 logger = logging.getLogger(__name__)
 

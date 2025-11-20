@@ -11,9 +11,9 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
 
-from core.config import config
-from core.exceptions import DFSMetadataError
-from shared.models import (
+from backend.core.config import config
+from backend.core.exceptions import DFSMetadataError
+from backend.shared.models import (
     ChunkEntry,
     ChunkState,
     ChunkTarget,
@@ -24,7 +24,7 @@ from shared.models import (
     NodeState,
     ReplicaInfo,
 )
-from shared.protocols import MetadataStorageProtocol
+from backend.shared.protocols import MetadataStorageProtocol
 
 logger = logging.getLogger(__name__)
 

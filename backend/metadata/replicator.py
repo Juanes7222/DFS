@@ -9,9 +9,9 @@ from uuid import UUID
 
 import httpx
 
-from core.config import config
-from shared.models import ChunkState
-from shared.protocols import ReplicationProtocol
+from backend.core.config import config
+from backend.shared.models import ChunkState
+from backend.shared.protocols import ReplicationProtocol
 
 logger = logging.getLogger(__name__)
 
