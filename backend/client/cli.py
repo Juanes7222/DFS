@@ -10,10 +10,10 @@ from typing import Optional
 import click
 
 from .client import DFSClient
-from backend.core.config import config
-from backend.core.logging import setup_logging
-from backend.shared.utils import format_bytes
-from backend.core.exceptions import DFSClientError, DFSMetadataError
+from core.config import config
+from core.logging import setup_logging
+from shared.utils import format_bytes
+from core.exceptions import DFSClientError, DFSMetadataError
 
 logger = logging.getLogger(__name__)
 
