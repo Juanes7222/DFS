@@ -1,7 +1,3 @@
-"""
-DFS CLI - Versión refactorizada completa
-"""
-
 import asyncio
 import logging
 import sys
@@ -19,12 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 def setup_cli():
-    """Configuración centralizada del CLI."""
+    """Configuración centralizada del CLI"""
     setup_logging()
 
 
 def progress_bar(progress: float):
-    """Muestra una barra de progreso."""
+    """Muestra una barra de progreso"""
     bar_length = 40
     filled = int(bar_length * progress / 100)
     bar = "=" * filled + "-" * (bar_length - filled)
@@ -32,7 +28,7 @@ def progress_bar(progress: float):
 
 
 class DFSContext:
-    """Contexto compartido para comandos CLI."""
+    """Contexto compartido para comandos CLI"""
 
     def __init__(self, metadata_url: str, verbose: bool = False):
         self.client = DFSClient(metadata_url)
@@ -73,9 +69,9 @@ def upload(ctx, local_path: str, remote_path: str):
             print()  # Nueva línea después de la barra de progreso
 
             if success:
-                click.echo(click.style("✓ Upload completado", fg="green"))
+                click.echo(click.style("✓ Subida completada", fg="green"))
             else:
-                click.echo(click.style("✗ Upload falló", fg="red"))
+                click.echo(click.style("✗ Subida fallida", fg="red"))
                 sys.exit(1)
 
         except (DFSClientError, DFSMetadataError) as e:
@@ -93,7 +89,7 @@ def upload(ctx, local_path: str, remote_path: str):
 @click.argument("local_path", type=click.Path())
 @click.pass_context
 def download(ctx, remote_path: str, local_path: str):
-    """Descarga un archivo del DFS"""
+    """Descarga un archivo del DFS al equipo local del usuario"""
     client = ctx.obj.client
 
     click.echo(f"Descargando {remote_path} -> {local_path}")
@@ -106,9 +102,9 @@ def download(ctx, remote_path: str, local_path: str):
             print()
 
             if success:
-                click.echo(click.style("✓ Download completado", fg="green"))
+                click.echo(click.style("✓ Descarga completada", fg="green"))
             else:
-                click.echo(click.style("✗ Download falló", fg="red"))
+                click.echo(click.style("✗ Descarga fallida", fg="red"))
                 sys.exit(1)
 
         except (DFSClientError, DFSMetadataError) as e:
@@ -123,7 +119,7 @@ def download(ctx, remote_path: str, local_path: str):
 @click.option("--limit", default=100, help="Límite de resultados")
 @click.pass_context
 def ls(ctx, prefix: Optional[str], limit: int):
-    """Lista archivos en el DFS"""
+    """Lista los archivos en el DFS"""
     client = ctx.obj.client
 
     async def do_list():
@@ -159,7 +155,7 @@ def ls(ctx, prefix: Optional[str], limit: int):
 @click.option("--permanent", is_flag=True, help="Eliminar permanentemente")
 @click.pass_context
 def rm(ctx, remote_path: str, permanent: bool):
-    """Elimina un archivo del DFS"""
+    """Elimina permanentemente un archivo del DFS"""
     client = ctx.obj.client
 
     if permanent:
@@ -176,7 +172,7 @@ def rm(ctx, remote_path: str, permanent: bool):
                     if permanent
                     else "marcado como eliminado"
                 )
-                click.echo(click.style(f"✓ Archivo {action}", fg="green"))
+                click.echo(click.style(f"✓ Archivo {action} exitósamente", fg="green"))
             else:
                 click.echo(click.style("✗ Error eliminando archivo", fg="red"))
                 sys.exit(1)
@@ -191,7 +187,7 @@ def rm(ctx, remote_path: str, permanent: bool):
 @cli.command()
 @click.pass_context
 def nodes(ctx):
-    """Lista nodos del cluster"""
+    """Lista los nodos del cluster"""
     client = ctx.obj.client
 
     async def do_nodes():

@@ -1,7 +1,3 @@
-"""
-Storage backend para metadata - Versión refactorizada completa
-"""
-
 import asyncio
 import json
 import logging
@@ -48,7 +44,7 @@ class MetadataStorage(MetadataStorageProtocol):
 
     @property
     def _conn(self) -> sqlite3.Connection:
-        """Accesor que devuelve la conexión no-Optional o lanza error."""
+        """Accesor que devuelve la conexión no-Optional o lanza error"""
         if self.conn is None:
             raise DFSMetadataError(
                 "Conexión a la base de datos no inicializada. Llamar a initialize()."
@@ -56,7 +52,7 @@ class MetadataStorage(MetadataStorageProtocol):
         return self.conn
 
     async def initialize(self) -> None:
-        """Inicializa la base de datos."""
+        """Inicializa la base de datos"""
         try:
             self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row
@@ -66,7 +62,7 @@ class MetadataStorage(MetadataStorageProtocol):
             raise DFSMetadataError(f"Error inicializando storage: {e}")
 
     async def _create_tables(self) -> None:
-        """Crea las tablas necesarias."""
+        """Crea las tablas necesarias"""
         tables = [
             """
             CREATE TABLE IF NOT EXISTS files (
@@ -123,7 +119,7 @@ class MetadataStorage(MetadataStorageProtocol):
         conn.commit()
 
     async def close(self) -> None:
-        """Cierra la conexión."""
+        """Cierra la conexión"""
         if self.conn:
             self.conn.close()
             self.conn = None
@@ -132,7 +128,7 @@ class MetadataStorage(MetadataStorageProtocol):
     async def create_file_metadata(
         self, path: str, size: int, chunks: List[ChunkTarget]
     ) -> FileMetadata:
-        """Crea metadata de archivo."""
+        """Crea metadata de archivo"""
         async with self.lock:
             file_id = uuid4()
             now = datetime.utcnow()
@@ -188,11 +184,11 @@ class MetadataStorage(MetadataStorageProtocol):
     async def create_chunk_plan(
         self, chunk_size: int, target_nodes: List[str]
     ) -> ChunkTarget:
-        """Crea un plan de chunk con targets."""
+        """Crea un plan de chunk con targets"""
         return ChunkTarget(chunk_id=uuid4(), size=chunk_size, targets=target_nodes)
 
     async def commit_file(self, file_id: UUID, chunks: List[ChunkCommitInfo]) -> bool:
-        """Confirma la subida de un archivo."""
+        """Confirma la subida de un archivo"""
         async with self.lock:
             try:
                 conn = self._conn
@@ -260,7 +256,7 @@ class MetadataStorage(MetadataStorageProtocol):
                 return False
 
     async def get_file_by_path(self, path: str) -> Optional[FileMetadata]:
-        """Obtiene metadata de archivo por path."""
+        """Obtiene metadata de archivo por path"""
         async with self.lock:
             row = self._conn.execute(
                 "SELECT * FROM files WHERE path = ? AND is_deleted = 0", (path,)
@@ -274,7 +270,7 @@ class MetadataStorage(MetadataStorageProtocol):
     async def list_files(
         self, prefix: Optional[str] = None, limit: int = 100, offset: int = 0
     ) -> List[FileMetadata]:
-        """Lista archivos."""
+        """Lista los archivos"""
         async with self.lock:
             query = "SELECT * FROM files WHERE is_deleted = 0"
             params: List = []
@@ -290,7 +286,7 @@ class MetadataStorage(MetadataStorageProtocol):
             return [self._row_to_file_metadata(row) for row in rows]
 
     async def delete_file(self, path: str, permanent: bool = False) -> bool:
-        """Elimina un archivo."""
+        """Elimina un archivo"""
         async with self.lock:
             try:
                 conn = self._conn
@@ -319,19 +315,19 @@ class MetadataStorage(MetadataStorageProtocol):
     async def update_node_heartbeat(
         self, node_id: str, free_space: int, total_space: int, chunk_ids: List[UUID]
     ) -> None:
-        """Actualiza heartbeat de un nodo."""
+        """Actualiza heartbeat de un nodo"""
         async with self.lock:
             now = datetime.utcnow()
             threshold = now - timedelta(seconds=config.node_timeout)
 
             conn = self._conn
-            # Verificar si el nodo existe
+            # Verifica si el nodo existe
             row = conn.execute(
                 "SELECT node_id FROM nodes WHERE node_id = ?", (node_id,)
             ).fetchone()
 
             if row:
-                # Actualizar nodo existente
+                # Actualiza un nodo existente
                 conn.execute(
                     """
                     UPDATE nodes 
@@ -349,7 +345,7 @@ class MetadataStorage(MetadataStorageProtocol):
                     ),
                 )
             else:
-                # Insertar nuevo nodo
+                # Inserta un nuevo nodo
                 host, port = self._parse_node_id(node_id)
 
                 conn.execute(
@@ -370,7 +366,7 @@ class MetadataStorage(MetadataStorageProtocol):
                     ),
                 )
 
-            # Marcar nodos inactivos
+            # Marca los nodos inactivos
             conn.execute(
                 "UPDATE nodes SET state = ? WHERE last_heartbeat < ?",
                 (NodeState.INACTIVE.value, threshold.isoformat()),
@@ -380,7 +376,7 @@ class MetadataStorage(MetadataStorageProtocol):
             logger.debug(f"Heartbeat actualizado: {node_id}")
 
     async def get_node(self, node_id: str) -> Optional[NodeInfo]:
-        """Obtiene información de un nodo."""
+        """Obtiene información de un nodo"""
         # Lectura simple sin lock
         row = self._conn.execute(
             "SELECT * FROM nodes WHERE node_id = ?", (node_id,)
@@ -392,7 +388,7 @@ class MetadataStorage(MetadataStorageProtocol):
         return self._row_to_node_info(row)
 
     async def list_nodes(self) -> List[NodeInfo]:
-        """Lista todos los nodos."""
+        """Lista todos los nodos"""
         # Lectura simple sin lock (SQLite soporta lecturas concurrentes)
         rows = self._conn.execute(
             "SELECT * FROM nodes ORDER BY last_heartbeat DESC"
@@ -401,7 +397,7 @@ class MetadataStorage(MetadataStorageProtocol):
         return [self._row_to_node_info(row) for row in rows]
 
     async def get_active_nodes(self) -> List[NodeInfo]:
-        """Obtiene nodos activos."""
+        """Obtiene nodos activos"""
         # Lectura simple sin lock
         threshold = (
             datetime.utcnow() - timedelta(seconds=config.node_timeout)
@@ -421,13 +417,13 @@ class MetadataStorage(MetadataStorageProtocol):
     async def acquire_lease(
         self, path: str, operation: str, timeout_seconds: int
     ) -> Optional[LeaseResponse]:
-        """Adquiere un lease."""
+        """Adquiere un lease"""
         async with self.lock:
             await self.cleanup_expired_leases()
 
             now = datetime.utcnow()
 
-            # Verificar si ya existe un lease activo
+            # Verifica si ya existe un lease activo
             row = self._conn.execute(
                 "SELECT lease_id FROM leases WHERE path = ? AND expires_at > ?",
                 (path, now.isoformat()),
@@ -436,7 +432,7 @@ class MetadataStorage(MetadataStorageProtocol):
             if row:
                 return None  # Ya existe un lease activo
 
-            # Crear nuevo lease
+            # Crea un nuevo lease
             lease_id = uuid4()
             expires_at = now + timedelta(seconds=timeout_seconds)
 
@@ -453,7 +449,7 @@ class MetadataStorage(MetadataStorageProtocol):
             return LeaseResponse(lease_id=lease_id, path=path, expires_at=expires_at)
 
     async def release_lease(self, lease_id: UUID) -> bool:
-        """Libera un lease."""
+        """Libera un lease"""
         async with self.lock:
             result = self._conn.execute(
                 "DELETE FROM leases WHERE lease_id = ?", (str(lease_id),)
@@ -467,7 +463,7 @@ class MetadataStorage(MetadataStorageProtocol):
             return success
 
     async def cleanup_expired_leases(self) -> None:
-        """Limpia leases expirados."""
+        """Limpia leases expirados"""
         async with self.lock:
             now = datetime.utcnow().isoformat()
             result = self._conn.execute(
@@ -478,7 +474,7 @@ class MetadataStorage(MetadataStorageProtocol):
                 logger.debug(f"Limpiados {result.rowcount} leases expirados")
 
     def _row_to_file_metadata(self, row) -> FileMetadata:
-        """Convierte una fila de la BD a FileMetadata."""
+        """Convierte una fila de la BD a FileMetadata"""
         chunks = [ChunkEntry(**c) for c in json.loads(row["chunks_json"])]
 
         return FileMetadata(
@@ -495,7 +491,7 @@ class MetadataStorage(MetadataStorageProtocol):
         )
 
     def _row_to_node_info(self, row) -> NodeInfo:
-        """Convierte una fila de la BD a NodeInfo."""
+        """Convierte una fila de la BD a NodeInfo"""
         return NodeInfo(
             node_id=row["node_id"],
             host=row["host"],
@@ -509,12 +505,12 @@ class MetadataStorage(MetadataStorageProtocol):
         )
 
     def _node_id_to_url(self, node_id: str) -> str:
-        """Convierte node_id a URL."""
+        """Convierte node_id a URL"""
         host, port = self._parse_node_id(node_id)
         return f"http://{host}:{port}"
 
     def _parse_node_id(self, node_id: str) -> Tuple[str, int]:
-        """Parsea node_id para extraer host y puerto."""
+        """Parsea node_id para extraer host y puerto"""
         parts = node_id.split("-")
         if len(parts) >= 3:
             host = parts[1]
@@ -526,7 +522,7 @@ class MetadataStorage(MetadataStorageProtocol):
         return "localhost", 8001
 
     async def get_system_stats(self) -> dict:
-        """Obtiene estadísticas del sistema."""
+        """Obtiene estadísticas del sistema"""
         async with self.lock:
             # Estadísticas de archivos
             files_row = self._conn.execute(

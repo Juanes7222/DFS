@@ -1,8 +1,3 @@
-"""
-Metadata Service - Servicio principal de metadatos del DFS
-Versión modularizada con separación de responsabilidades
-"""
-
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -20,11 +15,11 @@ from core.config import config
 from metadata.storage import MetadataStorage
 from metadata.replicator import ReplicationManager
 from metadata.leases import LeaseManager
-from metadata import context  # Importar módulo de contexto
+from metadata import context
 from metadata.api import file_router, node_router, lease_router, system_router
 from monitoring.metrics import MetricsMiddleware
 
-# Configurar logging
+# Configura logging
 logging.basicConfig(
     level=getattr(logging, config.log_level.upper()),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -33,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class ServiceManager:
-    """Gestor centralizado de servicios del Metadata Service"""
+    """Servicio principal de metadatos del DFS. Gestor centralizado de servicios del Metadata Service"""
 
     def __init__(self):
         self.storage: Optional[MetadataStorage] = None
@@ -80,7 +75,7 @@ class ServiceManager:
         """Limpia y cierra todos los servicios"""
         logger.info("Deteniendo Metadata Service...")
 
-        # Cancelar metrics task
+        # Cancela metrics task
         if self.metrics_task and not self.metrics_task.done():
             self.metrics_task.cancel()
             try:
@@ -88,7 +83,7 @@ class ServiceManager:
             except asyncio.CancelledError:
                 pass
 
-        # Detener replicator
+        # Detiene replicator
         if self.replicator:
             try:
                 await self.replicator.stop()
@@ -96,7 +91,7 @@ class ServiceManager:
             except Exception as e:
                 logger.error(f"Error deteniendo Replication Manager: {e}")
 
-        # Cerrar storage
+        # Cerra storage
         if self.storage:
             try:
                 await self.storage.close()
@@ -112,20 +107,20 @@ class ServiceManager:
 
         while True:
             try:
-                # Solo actualizar métricas de leases para no bloquear el lock de storage
+                # Solo actualiza las métricas de leases para no bloquear el lock de storage
                 if self.lease_manager:
                     lease_stats = self.lease_manager.get_lease_stats()
                     update_lease_metrics(lease_stats["active_leases"])
 
-                # Reducir frecuencia de actualización
-                await asyncio.sleep(30)  # Actualizar cada 30 segundos en lugar de 10
+                # Reduce frecuencia de actualización
+                await asyncio.sleep(30)  # Actualiza cada 30 segundos en lugar de 10
 
             except asyncio.CancelledError:
                 logger.info("Metrics updater cancelado")
                 break
             except Exception as e:
                 logger.error(f"Error en metrics updater: {e}")
-                await asyncio.sleep(60)  # Esperar más en caso de error
+                await asyncio.sleep(60)  # Espera más en caso de error
 
 
 # Instancia global del service manager
@@ -136,10 +131,10 @@ service_manager = ServiceManager()
 async def lifespan(app: FastAPI):
     """Gestión del ciclo de vida de la aplicación"""
 
-    # Inicializar servicios
+    # Inicializa servicios
     await service_manager.initialize()
 
-    # Exponer referencias en el módulo de contexto
+    # Expone referencias en el módulo de contexto
     context.set_storage(service_manager.storage)
     context.set_replicator(service_manager.replicator)
     context.set_lease_manager(service_manager.lease_manager)
@@ -153,7 +148,7 @@ async def lifespan(app: FastAPI):
         yield
 
     finally:
-        # Cleanup
+        # Hace limpieza
         await service_manager.cleanup()
 
 
@@ -172,7 +167,7 @@ def create_app() -> FastAPI:
     # CORS middleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # En producción, especificar orígenes permitidos
+        allow_origins=["*"],  # En producción, especifica orígenes permitidos
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -181,7 +176,7 @@ def create_app() -> FastAPI:
     # Metrics middleware
     app.add_middleware(MetricsMiddleware)
 
-    # Registrar routers
+    # Registro de routers
     app.include_router(file_router, prefix="/api/v1", tags=["Files"])
     app.include_router(node_router, prefix="/api/v1", tags=["Nodes"])
     app.include_router(lease_router, prefix="/api/v1", tags=["Leases"])
@@ -190,7 +185,7 @@ def create_app() -> FastAPI:
     return app
 
 
-# Crear aplicación
+# Crea la aplicación
 app = create_app()
 
 

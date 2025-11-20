@@ -1,7 +1,3 @@
-"""
-Sistema de health checks - Versión completa
-"""
-
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -66,7 +62,7 @@ class HealthChecker:
             )
 
     async def _perform_health_checks(self) -> Dict[str, Any]:
-        """Realiza checks de salud individuales."""
+        """Realiza checks de salud individuales"""
         checks = {}
 
         # Check de storage
@@ -87,12 +83,12 @@ class HealthChecker:
         return checks
 
     async def _check_storage_health(self) -> Dict[str, Any]:
-        """Verifica la salud del storage."""
+        """Verifica la salud del storage"""
         if not self.storage:
             return {"status": "unknown", "reason": "Storage no configurado"}
 
         try:
-            # Verificar que podemos acceder al storage
+            # Verifica que podemos acceder al storage
             nodes = await self.storage.get_active_nodes()
             files = await self.storage.list_files(limit=1)
 
@@ -106,7 +102,7 @@ class HealthChecker:
             return {"status": "unhealthy", "error": str(e), "storage_type": "sqlite"}
 
     async def _check_replication_health(self) -> Dict[str, Any]:
-        """Verifica la salud del sistema de replicación."""
+        """Verifica la salud del sistema de replicación"""
         if not self.replicator:
             return {"status": "unknown", "reason": "Replicator no configurado"}
 
@@ -132,7 +128,7 @@ class HealthChecker:
             return {"status": "unhealthy", "error": str(e)}
 
     async def _check_leases_health(self) -> Dict[str, Any]:
-        """Verifica la salud del sistema de leases."""
+        """Verifica la salud del sistema de leases"""
         if not self.lease_manager:
             return {"status": "unknown", "reason": "Lease manager no configurado"}
 
@@ -149,7 +145,7 @@ class HealthChecker:
             return {"status": "unhealthy", "error": str(e)}
 
     async def _check_nodes_health(self) -> Dict[str, Any]:
-        """Verifica la salud de los nodos del cluster."""
+        """Verifica la salud de los nodos del cluster"""
         if not self.storage:
             return {"status": "unknown", "reason": "Storage no configurado"}
 
@@ -193,7 +189,7 @@ class HealthChecker:
             return {"status": "unhealthy", "error": str(e)}
 
     async def _check_connectivity(self) -> Dict[str, Any]:
-        """Verifica la conectividad básica."""
+        """Verifica la conectividad básica"""
         checks = {}
 
         # Check de puertos locales (simulado)
@@ -211,7 +207,7 @@ class HealthChecker:
         return {"status": overall_status, "checks": checks}
 
     async def _get_system_details(self) -> Dict[str, Any]:
-        """Obtiene detalles del sistema."""
+        """Obtiene detalles del sistema"""
         if not self.storage:
             return {"error": "Storage no disponible para detalles del sistema"}
 
@@ -228,7 +224,7 @@ class HealthChecker:
             return {"error": f"Error obteniendo detalles del sistema: {e}"}
 
     def _determine_overall_status(self, checks: Dict[str, Any]) -> str:
-        """Determina el estado general basado en los checks individuales."""
+        """Determina el estado general basado en los checks individuales"""
         status_priority = {"unhealthy": 3, "degraded": 2, "healthy": 1, "unknown": 0}
 
         worst_status = "healthy"
@@ -240,7 +236,7 @@ class HealthChecker:
         return worst_status
 
     async def get_cached_health(self) -> Dict[str, Any]:
-        """Obtiene el health check desde la cache si está fresca."""
+        """Obtiene el health check desde la cache si está fresca"""
         if (
             self.last_update
             and (datetime.utcnow() - self.last_update).total_seconds() < self.cache_ttl
@@ -358,12 +354,12 @@ async def check_datanode_health(datanode_url: str) -> Dict[str, Any]:
 
 # Utilidades para health checks
 def is_healthy(health_data: Dict[str, Any]) -> bool:
-    """Verifica si los datos de salud indican un estado saludable."""
+    """Verifica si los datos de salud indican un estado saludable"""
     return health_data.get("status") == "healthy"
 
 
 def get_health_summary(health_data: Dict[str, Any]) -> str:
-    """Obtiene un resumen legible del estado de salud."""
+    """Obtiene un resumen legible del estado de salud"""
     status = health_data.get("status", "unknown")
     checks = health_data.get("details", {}).get("checks", {})
 

@@ -1,7 +1,3 @@
-"""
-API Router para operaciones de archivos
-"""
-
 import logging
 from typing import List, Optional
 
@@ -266,7 +262,7 @@ async def delete_file(
             }
 
         finally:
-            # Liberar lease
+            # Libera lease
             if lease and lease_mgr:
                 await lease_mgr.release_lease(lease.lease_id, path)
 

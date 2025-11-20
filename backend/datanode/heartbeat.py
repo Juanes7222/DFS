@@ -1,5 +1,3 @@
-"""Gestión de heartbeats para DataNode"""
-
 import asyncio
 import logging
 from typing import List, Optional
@@ -13,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class HeartbeatManager:
-    """Gestiona el envío periódico de heartbeats al Metadata Service."""
+    """Gestiona el envío periódico de heartbeats al Metadata Service"""
 
     def __init__(self, node_id: str, storage, metadata_url: str):
         self.node_id = node_id
@@ -23,7 +21,7 @@ class HeartbeatManager:
         self.task: Optional[asyncio.Task] = None
 
     async def start(self):
-        """Inicia el envío de heartbeats."""
+        """Inicia el envío de heartbeats"""
         import sys
 
         self.running = True
@@ -35,7 +33,7 @@ class HeartbeatManager:
         self.task = asyncio.create_task(self._heartbeat_loop())
 
     async def stop(self):
-        """Detiene el envío de heartbeats."""
+        """Detiene el envío de heartbeats"""
         self.running = False
         if self.task:
             self.task.cancel()
@@ -46,7 +44,7 @@ class HeartbeatManager:
         logger.info(f"Heartbeat manager detenido para {self.node_id}")
 
     async def _heartbeat_loop(self):
-        """Loop principal de envío de heartbeats."""
+        """Loop principal de envío de heartbeats"""
         while self.running:
             try:
                 await self._send_heartbeat()
@@ -58,7 +56,7 @@ class HeartbeatManager:
                 await asyncio.sleep(5)  # Esperar antes de reintentar
 
     async def _send_heartbeat(self):
-        """Envía un heartbeat al Metadata Service."""
+        """Envía un heartbeat al Metadata Service"""
         import traceback
 
         try:
@@ -91,7 +89,7 @@ class HeartbeatManager:
             logger.error(f"Traceback: {traceback.format_exc()}")
 
     def _get_stored_chunk_ids(self) -> List[UUID]:
-        """Obtiene la lista de chunks almacenados."""
+        """Obtiene la lista de chunks almacenados"""
         chunk_ids = []
         if self.storage.storage_path.exists():
             for chunk_file in self.storage.storage_path.glob("*.chunk"):

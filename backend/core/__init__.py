@@ -2,7 +2,7 @@
 Módulos core del sistema DFS
 """
 
-# Cambiar imports relativos incorrectos
+# Tuve que corregir los imports, Visual no me los reconocía
 from .config import config, DFSConfig
 from .exceptions import (
     DFSError,

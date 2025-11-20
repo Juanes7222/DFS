@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-"""
-Gestión de leases para operaciones concurrentes - Versión completa
-"""
-
 import asyncio
 import logging
 from datetime import datetime, timedelta
@@ -13,21 +9,20 @@ from uuid import UUID
 from core.exceptions import DFSLeaseConflictError
 from shared.models import (
     LeaseResponse,
-)  # asumes que LeaseResponse existe y está tipado
+)
 
 logger = logging.getLogger(__name__)
 
 
 class LeaseManager:
     """
-    Gestiona leases para operaciones concurrentes.
+    Gestiona los leases para operaciones concurrentes.
     Proporciona exclusividad mutua para operaciones en archivos.
     """
 
     def __init__(self, storage):
         self.storage = storage
-        # `LeaseInfo` es una forward reference pero `from __future__ import annotations`
-        # permite usarla directamente aquí.
+        # `LeaseInfo` es una forward reference pero `from __future__ import annotations` permite usarla directamente aquí.
         self.local_leases: Dict[str, LeaseInfo] = {}
         self.lock = asyncio.Lock()
 
@@ -42,7 +37,7 @@ class LeaseManager:
         Adquiere un lease para una operación.
         """
         async with self.lock:
-            # Verificar lease local primero (para eficiencia)
+            # Verifica lease local primero (para eficiencia)
             if path in self.local_leases:
                 lease_info = self.local_leases[path]
                 if lease_info.is_valid() and not lease_info.is_expired():
@@ -50,10 +45,10 @@ class LeaseManager:
                         f"Lease activo existente para {path} (expira: {lease_info.expires_at})"
                     )
                 else:
-                    # Remover lease expirado
+                    # Elimina el lease expirado
                     del self.local_leases[path]
 
-            # Intentar adquirir lease en el storage
+            # Intenta adquirir lease en el storage
             lease_response = await self.storage.acquire_lease(
                 path=path, operation=operation, timeout_seconds=timeout_seconds
             )
@@ -61,7 +56,7 @@ class LeaseManager:
             if not lease_response:
                 raise DFSLeaseConflictError(f"No se pudo adquirir lease para {path}")
 
-            # Registrar lease localmente
+            # Registra lease localmente
             lease_info = LeaseInfo(
                 lease_id=lease_response.lease_id,
                 path=path,
@@ -80,10 +75,10 @@ class LeaseManager:
         Libera un lease.
         """
         async with self.lock:
-            # Liberar en el storage
+            # Libera en el storage
             success = await self.storage.release_lease(lease_id)
 
-            # Limpiar localmente
+            # Limpia localmente
             if path and path in self.local_leases:
                 if self.local_leases[path].lease_id == lease_id:
                     del self.local_leases[path]
@@ -101,7 +96,7 @@ class LeaseManager:
         Valida si un lease es aún válido.
         """
         async with self.lock:
-            # Verificar localmente primero
+            # Primero verifica localmente
             if path in self.local_leases:
                 lease_info = self.local_leases[path]
                 if (
@@ -111,9 +106,7 @@ class LeaseManager:
                 ):
                     return True
 
-            # Si no está localmente o es inválido, verificar con el storage
-            # En un sistema real, aquí verificarías con el storage distribuido
-            # Por simplicidad, asumimos que si no está localmente, es inválido
+            # Si no está localmente o es inválido, verifica con el storage
             return False
 
     async def renew_lease(
@@ -123,14 +116,14 @@ class LeaseManager:
         Renueva un lease existente.
         """
         async with self.lock:
-            # Verificar que el lease exista y sea válido
+            # Verifica que el lease exista y sea válido
             if not await self.validate_lease(lease_id, path):
                 return False
 
-            # Liberar el lease existente
+            # Libera el lease existente
             await self.storage.release_lease(lease_id)
 
-            # Adquirir nuevo lease
+            # Adquiere nuevo lease
             try:
                 lease_info = self.local_leases[path]
                 new_lease = await self.acquire_lease(
@@ -160,7 +153,7 @@ class LeaseManager:
                 if lease_info.is_valid() and not lease_info.is_expired(now):
                     active_leases.append(lease_info)
                 else:
-                    # recolectamos para borrar fuera del bucle de iteración
+                    # Se recolecta para borrar fuera del bucle de iteración
                     expired_paths.append(path)
 
             for p in expired_paths:
@@ -169,7 +162,7 @@ class LeaseManager:
             return active_leases
 
     async def cleanup_expired_leases(self):
-        """Limpia leases expirados localmente."""
+        """Limpia leases expirados localmente"""
         async with self.lock:
             now = datetime.utcnow()
             expired_paths = [
@@ -181,7 +174,7 @@ class LeaseManager:
                 logger.debug(f"Lease local expirado limpiado: {path}")
 
     def get_lease_stats(self) -> Dict:
-        """Obtiene estadísticas de leases."""
+        """Obtiene estadísticas de leases"""
         now = datetime.utcnow()
         total_leases = len(self.local_leases)
         active_leases = sum(
@@ -199,7 +192,7 @@ class LeaseManager:
 
 
 class LeaseInfo:
-    """Información de un lease local."""
+    """Información de un lease local"""
 
     def __init__(
         self,
@@ -221,24 +214,24 @@ class LeaseInfo:
         self.created_at: datetime = datetime.utcnow()
 
     def is_valid(self) -> bool:
-        """Verifica si el lease es válido."""
+        """Verifica si el lease es válido"""
         return self.expires_at > datetime.utcnow()
 
     def is_expired(self, now: Optional[datetime] = None) -> bool:
-        """Verifica si el lease ha expirado."""
+        """Verifica si el lease ha expirado"""
         if now is None:
             now = datetime.utcnow()
         return self.expires_at <= now
 
     def time_remaining(self) -> float:
-        """Obtiene el tiempo restante del lease en segundos."""
+        """Obtiene el tiempo restante del lease en segundos"""
         now = datetime.utcnow()
         if self.is_expired(now):
             return 0.0
         return (self.expires_at - now).total_seconds()
 
     def to_dict(self) -> Dict:
-        """Convierte a diccionario."""
+        """Convierte a diccionario"""
         return {
             "lease_id": str(self.lease_id),
             "path": self.path,

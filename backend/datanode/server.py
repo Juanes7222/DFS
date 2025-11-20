@@ -1,5 +1,3 @@
-"""DataNode unificado - Combina las mejores características de ambas implementaciones"""
-
 import logging
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -18,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class DataNodeServer:
-    """Servidor DataNode unificado."""
+    """Servidor DataNode unificado"""
 
     def __init__(self, node_id: Optional[str] = None, port: Optional[int] = None):
         self.node_id = (
@@ -35,11 +33,11 @@ class DataNodeServer:
         self.app = self._create_app()
 
     def _create_app(self) -> FastAPI:
-        """Crea la aplicación FastAPI."""
+        """Crea la aplicación FastAPI"""
 
         @asynccontextmanager
         async def lifespan(app: FastAPI):
-            """Gestión del ciclo de vida del DataNode"""
+            """Gestiona el ciclo de vida del DataNode"""
             # Startup
             await self.start()
             yield
@@ -48,7 +46,7 @@ class DataNodeServer:
 
         app = FastAPI(
             title=f"DFS DataNode {self.node_id}",
-            description="Nodo de almacenamiento para Sistema de Archivos Distribuido",
+            description="Nodo de almacenamiento para el Sistema de Archivos Distribuido (DFS)",
             version="1.0.0",
             lifespan=lifespan,
         )
@@ -61,7 +59,7 @@ class DataNodeServer:
         async def put_chunk(
             chunk_id: UUID, file: UploadFile, replicate_to: Optional[str] = Query(None)
         ):
-            """Almacena un chunk con replicación en pipeline."""
+            """Almacena un chunk con replicación en pipeline"""
             try:
                 chunk_data = await file.read()
                 result = await self.storage.store_chunk(
@@ -73,7 +71,7 @@ class DataNodeServer:
 
         @app.get("/api/v1/chunks/{chunk_id}")
         async def get_chunk(chunk_id: UUID):
-            """Recupera un chunk."""
+            """Recupera un chunk"""
             try:
                 chunk_data, checksum = await self.storage.retrieve_chunk(chunk_id)
 
@@ -104,7 +102,7 @@ class DataNodeServer:
         return app
 
     async def start(self):
-        """Inicia el DataNode."""
+        """Inicia el DataNode"""
         import sys
 
         sys.stderr.write(
@@ -128,14 +126,14 @@ class DataNodeServer:
         logger.info(f"DataNode {self.node_id} iniciado correctamente")
 
     async def stop(self):
-        """Detiene el DataNode."""
+        """Detiene el DataNode"""
         logger.info(f"Deteniendo DataNode {self.node_id}")
         await self.heartbeat_manager.stop()
         logger.info(f"DataNode {self.node_id} detenido")
 
 
 def main():
-    """Función principal para ejecutar el DataNode."""
+    """Función principal para ejecutar el DataNode"""
     import uvicorn
     import sys
 

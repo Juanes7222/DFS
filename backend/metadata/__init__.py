@@ -1,5 +1,5 @@
 """
-Metadata Service - Servicio de metadatos distribuido
+Módulos de ervicio de metadatos distribuido del sistema DFS
 """
 
 from .server import app as metadata_app
