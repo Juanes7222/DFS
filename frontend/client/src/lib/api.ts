@@ -157,9 +157,6 @@ class APIService {
       const primaryTarget = chunk.targets[0];
       const replicationChain = chunk.targets.slice(1);
 
-      console.log(`Uploading chunk ${i} to primary target ${primaryTarget}`);
-      console.log(`Replication chain: ${replicationChain.join(", ")}`);
-
       try {
         const formData = new FormData();
         formData.append("file", chunkBlob);

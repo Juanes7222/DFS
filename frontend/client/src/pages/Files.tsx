@@ -285,7 +285,12 @@ export default function Files() {
                 </label>
                 <Input
                   type="file"
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                  onChange={(e) => {
+                    setSelectedFile(e.target.files?.[0] || null)
+                    if (e.target.files?.[0]) {
+                      setRemotePath(e.target.files[0].name)
+                    }
+                  }}
                   disabled={uploading}
                 />
               </div>
