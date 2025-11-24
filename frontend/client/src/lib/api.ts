@@ -91,14 +91,21 @@ class APIService {
   }
 
   async getFile(path: string): Promise<FileMetadata> {
-    return this.request<FileMetadata>(`/api/v1/files/${encodeURIComponent(path)}`);
+    return this.request<FileMetadata>(
+      `/api/v1/files/${encodeURIComponent(path)}`
+    );
   }
 
   async deleteFile(path: string, permanent: boolean = false): Promise<void> {
-    await this.request(`/api/v1/files/${encodeURIComponent(path)}?permanent=${permanent}`, {
-      method: "DELETE",
-    });
+    await this.request(
+      `/api/v1/files/${encodeURIComponent(path)}?permanent=${permanent}`,
+      {
+        method: "DELETE",
+      }
+    );
   }
+
+  // En api.ts - Sección de uploadFile
 
   async uploadFile(
     file: File,
@@ -142,21 +149,36 @@ class APIService {
       const arrayBuffer = await chunkBlob.arrayBuffer();
       const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const checksum = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+      const checksum = hashArray
+        .map(b => b.toString(16).padStart(2, "0"))
+        .join("");
 
       // Pipeline replication: upload only to first node
       const primaryTarget = chunk.targets[0];
       const replicationChain = chunk.targets.slice(1);
 
+      console.log(`Uploading chunk ${i} to primary target ${primaryTarget}`);
+      console.log(`Replication chain: ${replicationChain.join(", ")}`);
+
       try {
         const formData = new FormData();
         formData.append("file", chunkBlob);
 
+        // FIX: Normalizar URLs para que funcionen desde el navegador
+        const normalizedPrimary = this.normalizeNodeUrl(primaryTarget);
+        const normalizedChain = replicationChain.map(url =>
+          this.normalizeNodeUrl(url)
+        );
+
         // Build URL with replication chain
-        const url = new URL(`${primaryTarget}/api/v1/chunks/${chunk.chunk_id}`);
-        if (replicationChain.length > 0) {
-          url.searchParams.set("replicate_to", replicationChain.join("|"));
+        const url = new URL(
+          `${normalizedPrimary}/api/v1/chunks/${chunk.chunk_id}`
+        );
+        if (normalizedChain.length > 0) {
+          url.searchParams.set("replicate_to", normalizedChain.join("|"));
         }
+
+        console.log(`Uploading to: ${url.toString()}`);
 
         const response = await fetch(url.toString(), {
           method: "PUT",
@@ -164,7 +186,9 @@ class APIService {
         });
 
         if (!response.ok) {
-          throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
+          throw new Error(
+            `Upload failed: ${response.status} ${response.statusText}`
+          );
         }
 
         const result = await response.json();
@@ -195,7 +219,18 @@ class APIService {
     });
   }
 
-  async downloadFile(path: string, onProgress?: (progress: number) => void): Promise<Blob> {
+  /**
+   * Normaliza URLs de nodos reemplazando 0.0.0.0 con localhost
+   * para que funcionen desde el navegador
+   */
+  private normalizeNodeUrl(url: string): string {
+    return url.replace("0.0.0.0", "localhost");
+  }
+
+  async downloadFile(
+    path: string,
+    onProgress?: (progress: number) => void
+  ): Promise<Blob> {
     // Get file metadata
     const metadata = await this.getFile(path);
 
@@ -209,13 +244,20 @@ class APIService {
       let chunkBlob: Blob | null = null;
       for (const replica of chunk.replicas) {
         try {
-          const response = await fetch(`${replica.url}/api/v1/chunks/${chunk.chunk_id}`);
+          // FIX: Normalizar URL también para download
+          const normalizedUrl = this.normalizeNodeUrl(replica.url);
+          const response = await fetch(
+            `${normalizedUrl}/api/v1/chunks/${chunk.chunk_id}`
+          );
           if (response.ok) {
             chunkBlob = await response.blob();
             break;
           }
         } catch (error) {
-          console.error(`Error downloading chunk ${i} from ${replica.url}:`, error);
+          console.error(
+            `Error downloading chunk ${i} from ${replica.url}:`,
+            error
+          );
         }
       }
 
