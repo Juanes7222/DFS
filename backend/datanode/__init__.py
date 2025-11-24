@@ -1,5 +1,5 @@
 """
-DataNode - Nodo de almacenamiento distribuido
+Módulos de almacenamiento distribuido del sistema DFS
 """
 
 from .server import DataNodeServer

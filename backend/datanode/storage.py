@@ -1,7 +1,3 @@
-"""
-Gestión de almacenamiento de chunks para DataNode - Versión completa
-"""
-
 import asyncio
 import logging
 import shutil
@@ -20,21 +16,21 @@ logger = logging.getLogger(__name__)
 
 
 class ChunkStorage(ChunkStorageProtocol):
-    """Gestiona el almacenamiento y recuperación de chunks."""
+    """Gestiona el almacenamiento y recuperación de chunks"""
 
     def __init__(self, storage_path: Path):
         self.storage_path = storage_path
         self.lock = asyncio.Lock()
 
     async def initialize(self):
-        """Inicializa el almacenamiento."""
+        """Inicializa el almacenamiento"""
         self.storage_path.mkdir(parents=True, exist_ok=True)
         logger.info(f"Storage inicializado en: {self.storage_path}")
 
     async def store_chunk(
         self, chunk_id: UUID, chunk_data: bytes, replicate_to: Optional[str] = None
     ) -> dict:
-        """Almacena un chunk con replicación en pipeline."""
+        """Almacena un chunk con replicación en pipeline"""
         async with self.lock:
             chunk_path = self.storage_path / f"{chunk_id}.chunk"
             checksum_path = self.storage_path / f"{chunk_id}.checksum"
@@ -72,7 +68,7 @@ class ChunkStorage(ChunkStorageProtocol):
                 }
 
             except Exception as e:
-                # Cleanup en caso de error
+                # Hace limpieza en caso de error
                 if chunk_path.exists():
                     chunk_path.unlink()
                 if checksum_path.exists():
@@ -80,7 +76,7 @@ class ChunkStorage(ChunkStorageProtocol):
                 raise DFSStorageError(f"Error almacenando chunk {chunk_id}: {e}")
 
     async def retrieve_chunk(self, chunk_id: UUID) -> Tuple[bytes, str]:
-        """Recupera un chunk y verifica su checksum."""
+        """Recupera un chunk y verifica su checksum"""
         chunk_path = self.storage_path / f"{chunk_id}.chunk"
         checksum_path = self.storage_path / f"{chunk_id}.checksum"
 
@@ -88,11 +84,11 @@ class ChunkStorage(ChunkStorageProtocol):
             raise DFSStorageError(f"Chunk no encontrado: {chunk_id}")
 
         try:
-            # Leer chunk
+            # Lee el chunk
             with open(chunk_path, "rb") as f:
                 chunk_data = f.read()
 
-            # Verificar checksum
+            # Verifica el checksum
             calculated_checksum = calculate_checksum(chunk_data)
 
             if checksum_path.exists():
@@ -110,7 +106,7 @@ class ChunkStorage(ChunkStorageProtocol):
             raise DFSStorageError(f"Error recuperando chunk {chunk_id}: {e}")
 
     async def delete_chunk(self, chunk_id: UUID) -> bool:
-        """Elimina un chunk."""
+        """Elimina un chunk"""
         async with self.lock:
             chunk_path = self.storage_path / f"{chunk_id}.chunk"
             checksum_path = self.storage_path / f"{chunk_id}.checksum"
@@ -129,7 +125,7 @@ class ChunkStorage(ChunkStorageProtocol):
     async def _replicate_to_nodes(
         self, chunk_id: UUID, chunk_data: bytes, replicate_to: str
     ) -> List[str]:
-        """Replica el chunk a los nodos especificados."""
+        """Replica el chunk a los nodos especificados"""
         replicated_nodes = []
         next_nodes = replicate_to.split("|")
 
@@ -170,11 +166,11 @@ class ChunkStorage(ChunkStorageProtocol):
         return replicated_nodes
 
     def _get_node_id(self) -> str:
-        """Obtiene el ID del nodo actual."""
+        """Obtiene el ID del nodo actual"""
         return f"node-{config.datanode_host}-{config.datanode_port}"
 
     def get_storage_info(self) -> dict:
-        """Obtiene información del almacenamiento."""
+        """Obtiene información del almacenamiento"""
         if not self.storage_path.exists():
             return {
                 "free_space": 0,
@@ -207,7 +203,7 @@ class ChunkStorage(ChunkStorageProtocol):
             }
 
     async def get_stored_chunks(self) -> List[UUID]:
-        """Obtiene la lista de chunks almacenados."""
+        """Obtiene la lista de chunks almacenados"""
         chunk_ids = []
         if self.storage_path.exists():
             for chunk_file in self.storage_path.glob("*.chunk"):
@@ -222,24 +218,24 @@ class ChunkStorage(ChunkStorageProtocol):
         return chunk_ids
 
     async def verify_chunk_integrity(self, chunk_id: UUID) -> bool:
-        """Verifica la integridad de un chunk."""
+        """Verifica la integridad de un chunk"""
         try:
             chunk_data, calculated_checksum = await self.retrieve_chunk(chunk_id)
 
-            # Verificar contra checksum almacenado
+            # Verifica contra checksum almacenado
             checksum_path = self.storage_path / f"{chunk_id}.checksum"
             if checksum_path.exists():
                 with open(checksum_path, "r") as f:
                     stored_checksum = f.read().strip()
                 return calculated_checksum == stored_checksum
 
-            return True  # Si no hay checksum almacenado, asumir OK
+            return True  # Si no hay checksum almacenado, asume OK
 
         except DFSStorageError:
             return False
 
     async def cleanup_corrupted_chunks(self) -> List[UUID]:
-        """Elimina chunks corruptos y retorna la lista de IDs eliminados."""
+        """Elimina chunks corruptos y retorna la lista de IDs eliminados"""
         corrupted_chunks = []
         stored_chunks = await self.get_stored_chunks()
 

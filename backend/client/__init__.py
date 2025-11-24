@@ -1,5 +1,5 @@
 """
-Cliente y CLI para el sistema DFS
+Módulos client del sistema DFS
 """
 
 from .client import DFSClient

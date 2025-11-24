@@ -1,5 +1,6 @@
-"""Excepciones personalizadas para el sistema DFS"""
+"""Excepciones personalizadas para el DFS"""
 
+# Pueden modificarlas si quieren. Solo no las eliminen para evitar problemas
 
 class DFSError(Exception):
     """Excepción base para todos los errores del DFS"""

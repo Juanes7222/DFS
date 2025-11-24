@@ -1,7 +1,3 @@
-"""
-Replication Manager - Versión refactorizada completa
-"""
-
 import asyncio
 import logging
 from typing import List, Dict
@@ -35,13 +31,13 @@ class ReplicationManager(ReplicationProtocol):
         self.failed_replications = 0
 
     async def start(self):
-        """Inicia el replicator."""
+        """Inicia el replicator"""
         self.running = True
         self.task = asyncio.create_task(self._replication_loop())
         logger.info("Replication Manager iniciado")
 
     async def stop(self):
-        """Detiene el replicator."""
+        """Detiene el replicator"""
         self.running = False
         if self.task:
             self.task.cancel()
@@ -52,7 +48,7 @@ class ReplicationManager(ReplicationProtocol):
         logger.info("Replication Manager detenido")
 
     async def _replication_loop(self):
-        """Loop principal de replicación."""
+        """Loop principal de replicación"""
         while self.running:
             try:
                 await self.check_and_replicate()
@@ -276,16 +272,16 @@ class ReplicationManager(ReplicationProtocol):
         """
         Selecciona nodos destino para replicación.
         """
-        # Excluir nodos que ya tienen el chunk
+        # Excluye nodos que ya tienen el chunk
         existing_node_ids = {r.node_id for r in existing_replicas}
         candidate_nodes = [
             node for node in available_nodes if node.node_id not in existing_node_ids
         ]
 
-        # Ordenar por espacio libre (descendente)
+        # Ordena por espacio libre (descendente)
         candidate_nodes.sort(key=lambda node: node.free_space, reverse=True)
 
-        # Seleccionar los mejores candidatos
+        # Selecciona los mejores candidatos
         return candidate_nodes[:num_needed]
 
     def _select_source_replica(self, healthy_replicas: List):
@@ -293,14 +289,14 @@ class ReplicationManager(ReplicationProtocol):
         Selecciona la réplica origen más confiable.
         """
         # Por ahora, simplemente selecciona la primera réplica saludable
-        # En un sistema real, podrías considerar:
+        # Más adelante, podrías considerar:
         # - Latencia del nodo
         # - Carga del nodo
         # - Historial de confiabilidad
         return healthy_replicas[0]
 
     def get_stats(self) -> Dict:
-        """Obtiene estadísticas del replicator."""
+        """Obtiene estadísticas del replicator"""
         return {
             "replication_attempts": self.replication_attempts,
             "successful_replications": self.successful_replications,
@@ -315,6 +311,6 @@ class ReplicationManager(ReplicationProtocol):
         }
 
     async def trigger_immediate_check(self):
-        """Fuerza una verificación inmediata de replicación."""
+        """Fuerza una verificación inmediata de replicación"""
         if self.running:
             await self.check_and_replicate()

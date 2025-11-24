@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class HeartbeatManager:
-    """Gestiona el envío periódico de heartbeats al Metadata Service."""
+    """Gestiona el envío periódico de heartbeats al Metadata Service"""
 
     def __init__(self, node_id: str, storage, metadata_url: str, port: int):
         self.node_id = node_id

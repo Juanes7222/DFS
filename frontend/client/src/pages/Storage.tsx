@@ -25,7 +25,7 @@ export default function Storage() {
                 Las funciones de análisis y gestión del almacenamiento estarán disponibles próximamente.
               </p>
               <button
-                onClick={() => toast.info("Feature coming soon")}
+                onClick={() => toast.info("Función disponible próximamente")}
                 className="mt-4 text-primary hover:underline"
               >
                 Más información

@@ -1,5 +1,3 @@
-"""Configuración centralizada para el sistema DFS"""
-
 import os
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -8,9 +6,9 @@ from typing import List
 
 @dataclass
 class DFSConfig:
-    """Configuración centralizada del sistema DFS."""
+    """Configuración centralizada del sistema DFS"""
 
-    # Metadata Service
+    # Metadata
     metadata_host: str = os.getenv("DFS_METADATA_HOST", "localhost")
     metadata_port: int = int(os.getenv("DFS_METADATA_PORT", "8000"))
 
@@ -19,7 +17,7 @@ class DFSConfig:
     datanode_port: int = int(os.getenv("DFS_DATANODE_PORT", "8001"))
     storage_path: Path = Path(os.getenv("DFS_STORAGE_PATH", "/tmp/dfs-data"))
 
-    # Chunk Configuration
+    # Configuración de Chunk
     chunk_size: int = int(os.getenv("DFS_CHUNK_SIZE", "67108864"))  # 64MB
     replication_factor: int = int(os.getenv("DFS_REPLICATION_FACTOR", "3"))
 
@@ -63,5 +61,5 @@ class DFSConfig:
         return f"http://{self.datanode_host}:{self.datanode_port}"
 
 
-# Configuración global
+# Aaegura la configuración global
 config = DFSConfig()

@@ -151,14 +151,13 @@ replication_lag = Gauge(
 active_leases = Gauge("dfs_active_leases", "Number of active leases", registry=registry)
 
 
-
 def metrics_endpoint():
-    """Endpoint para exponer métricas Prometheus."""
+    """Endpoint para exponer métricas Prometheus"""
     return Response(content=generate_latest(registry), media_type=CONTENT_TYPE_LATEST)
 
 
 class MetricsMiddleware:
-    """Middleware para capturar métricas de requests HTTP."""
+    """Middleware para capturar métricas de requests HTTP"""
 
     def __init__(self, app):
         self.app = app
@@ -292,25 +291,25 @@ async def update_datanode_metrics(storage) -> Dict[str, Any]:
 
 
 def record_upload_operation(success: bool):
-    """Registra una operación de upload."""
+    """Registra una operación de upload"""
     status = "success" if success else "error"
     upload_operations_total.labels(status=status).inc()
 
 
 def record_download_operation(success: bool):
-    """Registra una operación de download."""
+    """Registra una operación de download"""
     status = "success" if success else "error"
     download_operations_total.labels(status=status).inc()
 
 
 def record_delete_operation(success: bool):
-    """Registra una operación de delete."""
+    """Registra una operación de delete"""
     status = "success" if success else "error"
     delete_operations_total.labels(status=status).inc()
 
 
 def record_chunk_read(success: bool, bytes_read: int = 0):
-    """Registra una operación de lectura de chunk."""
+    """Registra una operación de lectura de chunk"""
     status = "success" if success else "error"
     chunk_read_operations_total.labels(status=status).inc()
     if success and bytes_read > 0:
@@ -318,7 +317,7 @@ def record_chunk_read(success: bool, bytes_read: int = 0):
 
 
 def record_chunk_write(success: bool, bytes_written: int = 0):
-    """Registra una operación de escritura de chunk."""
+    """Registra una operación de escritura de chunk"""
     status = "success" if success else "error"
     chunk_write_operations_total.labels(status=status).inc()
     if success and bytes_written > 0:
@@ -326,13 +325,13 @@ def record_chunk_write(success: bool, bytes_written: int = 0):
 
 
 def record_chunk_delete(success: bool):
-    """Registra una operación de eliminación de chunk."""
+    """Registra una operación de eliminación de chunk"""
     status = "success" if success else "error"
     chunk_delete_operations_total.labels(status=status).inc()
 
 
 def record_heartbeat(success: bool):
-    """Registra un heartbeat."""
+    """Registra un heartbeat"""
     if success:
         heartbeat_sent_total.inc()
     else:
@@ -340,7 +339,7 @@ def record_heartbeat(success: bool):
 
 
 def record_replication_attempt(success: bool):
-    """Registra un intento de replicación."""
+    """Registra un intento de replicación"""
     replication_attempts_total.inc()
     if success:
         replication_success_total.inc()
@@ -349,7 +348,7 @@ def record_replication_attempt(success: bool):
 
 
 def update_lease_metrics(active_leases_count: int):
-    """Actualiza métricas de leases."""
+    """Actualiza métricas de leases"""
     active_leases.set(active_leases_count)
 
 

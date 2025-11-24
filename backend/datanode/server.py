@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class DataNodeServer:
-    """Servidor DataNode unificado."""
+    """Servidor DataNode unificado"""
 
     def __init__(self, node_id: Optional[str] = None, port: Optional[int] = None):
         self.port = port or config.datanode_port
@@ -35,8 +35,8 @@ class DataNodeServer:
         self.app = self._create_app()
 
     def _create_app(self) -> FastAPI:
-        """Crea la aplicación FastAPI."""
-        
+        """Crea la aplicación FastAPI"""
+
         @asynccontextmanager
         async def lifespan(app: FastAPI):
             """Gestión del ciclo de vida del DataNode"""
@@ -52,7 +52,7 @@ class DataNodeServer:
         
         app = FastAPI(
             title=f"DFS DataNode {self.node_id}",
-            description="Nodo de almacenamiento para Sistema de Archivos Distribuido",
+            description="Nodo de almacenamiento para el Sistema de Archivos Distribuido (DFS)",
             version="1.0.0",
             lifespan=lifespan,
         )
@@ -227,10 +227,8 @@ def setup_logging():
     """Configura el sistema de logging."""
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(sys.stdout)
-        ]
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
     )
     
     # Reducir verbosidad de librerías externas

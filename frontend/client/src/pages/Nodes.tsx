@@ -49,6 +49,21 @@ function getNodeStatusIcon(state: string) {
   }
 }
 
+const translateNodeState = (state: string) => {
+  switch (state) {
+    case "active":
+      return "Activo";
+    case "inactive":
+      return "Inactivo";
+    case "pending":
+      return "Pendiente";
+    case "error":
+      return "Error";
+    default:
+      return state; // fallback por si aparece algún estado nuevo
+  }
+};
+
 export default function Nodes() {
   const [nodes, setNodes] = useState<NodeInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,7 +81,7 @@ export default function Nodes() {
       setNodes(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load nodes");
+      setError(err instanceof Error ? err.message : "Error al cargar los nodos");
     } finally {
       setLoading(false);
     }
@@ -197,7 +212,7 @@ export default function Nodes() {
                           <Badge variant={getNodeStatusColor(node.state)}>
                             <span className="flex items-center gap-1">
                               {getNodeStatusIcon(node.state)}
-                              {node.state}
+                              {translateNodeState(node.state)}
                             </span>
                           </Badge>
                         </TableCell>

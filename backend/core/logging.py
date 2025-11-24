@@ -1,12 +1,10 @@
-"""Configuración centralizada de logging"""
-
 import logging
 import logging.config
 from .config import config
 
 
 def setup_logging():
-    """Configura el logging para toda la aplicación"""
+    """Configuración centralizada de logging"""
 
     log_config = {
         "version": 1,

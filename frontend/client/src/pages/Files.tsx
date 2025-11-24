@@ -82,7 +82,7 @@ export default function Files() {
       setFiles(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load files");
+      setError(err instanceof Error ? err.message : "Error al cargar los archivos");
     } finally {
       setLoading(false);
     }
@@ -90,7 +90,7 @@ export default function Files() {
 
   async function handleUpload() {
     if (!selectedFile || !remotePath) {
-      toast.error("Please select a file and enter a remote path");
+      toast.error("Selecciona un archivo e ingresa una ruta remota");
       return;
     }
 
@@ -102,14 +102,14 @@ export default function Files() {
         setUploadProgress(progress);
       });
 
-      toast.success("File uploaded successfully");
+      toast.success("Archivo subido correctamente");
       setUploadDialogOpen(false);
       setSelectedFile(null);
       setRemotePath("");
       setUploadProgress(0);
       loadFiles();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed");
+      toast.error(err instanceof Error ? err.message : "Error al subir el archivo");
     } finally {
       setUploading(false);
     }
@@ -117,7 +117,7 @@ export default function Files() {
 
   async function handleDownload(file: FileMetadata) {
     try {
-      toast.info("Downloading file...");
+      toast.info("Descargando archivo...");
       
       const blob = await api.downloadFile(file.path, (progress) => {
         // Could show progress in toast
@@ -133,21 +133,21 @@ export default function Files() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast.success("File downloaded successfully");
+      toast.success("Archivo descargado correctamente");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Download failed");
+      toast.error(err instanceof Error ? err.message : "Error al descargar el archivo");
     }
   }
 
   async function handleDelete(file: FileMetadata) {
-    if (!confirm(`Delete ${file.path}?`)) return;
+    if (!confirm(`¿Deseas eliminar el archivo en la ruta ${file.path}?`)) return;
 
     try {
       await api.deleteFile(file.path, false);
-      toast.success("File deleted");
+      toast.success("Archivo eliminado");
       loadFiles();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Delete failed");
+      toast.error(err instanceof Error ? err.message : "Error al borrar el archivo");
     }
   }
 
@@ -185,7 +185,7 @@ export default function Files() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search files..."
+                placeholder="Buscar archivo por nombre..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -208,7 +208,7 @@ export default function Files() {
               </div>
             ) : filteredFiles.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                {searchQuery ? "No files match your search" : "No files uploaded yet"}
+                {searchQuery ? "No se encontraron archivos que coincidan con tu búsqueda" : "Aún no se han subido archivos"}
               </div>
             ) : (
               <Table>
