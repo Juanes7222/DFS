@@ -1,0 +1,226 @@
+# Default values for DFS Helm chart
+
+# Global settings
+global:
+  namespace: dfs
+  imagePullPolicy: IfNotPresent
+  storageClass: standard  # Cambiar según el cluster
+
+# Metadata Service configuration
+metadata:
+  replicaCount: 1  # Para HA, aumentar a 3 con etcd
+  image:
+    repository: dfs-metadata
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 8000
+  
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+  
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""  # Usar default del cluster
+    accessMode: ReadWriteOnce
+  
+  env:
+    - name: PYTHONUNBUFFERED
+      value: "1"
+    - name: REPLICATION_FACTOR
+      value: "3"
+    - name: CHUNK_SIZE
+      value: "67108864"  # 64MB
+  
+  livenessProbe:
+    httpGet:
+      path: /api/v1/health
+      port: 8000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  readinessProbe:
+    httpGet:
+      path: /api/v1/health
+      port: 8000
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+# DataNode configuration
+datanode:
+  replicaCount: 3  # Mínimo 3 para replication_factor=3
+  image:
+    repository: dfs-datanode
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    portStart: 8001  # Cada DataNode usa un puerto diferente
+  
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "1000m"
+    limits:
+      memory: "2Gi"
+      cpu: "2000m"
+  
+  persistence:
+    enabled: true
+    size: 100Gi  # Ajustar según necesidades
+    storageClass: ""
+    accessMode: ReadWriteOnce
+  
+  env:
+    - name: PYTHONUNBUFFERED
+      value: "1"
+    - name: HEARTBEAT_INTERVAL
+      value: "10"
+    - name: METADATA_SERVICE_URL
+      value: "http://dfs-metadata:8000"
+  
+  livenessProbe:
+    httpGet:
+      path: /api/v1/health
+      port: 8001
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  readinessProbe:
+    httpGet:
+      path: /api/v1/health
+      port: 8001
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+# Prometheus configuration
+prometheus:
+  enabled: true
+  image:
+    repository: prom/prometheus
+    tag: latest
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 9090
+  
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+  
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+  
+  retention: 15d  # Retención de métricas
+  scrapeInterval: 15s
+  evaluationInterval: 15s
+
+# Grafana configuration
+grafana:
+  enabled: true
+  image:
+    repository: grafana/grafana
+    tag: latest
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: LoadBalancer  # Cambiar a NodePort o Ingress según necesidades
+    port: 3000
+  
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+  
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  
+  adminPassword: "admin"  # CAMBIAR EN PRODUCCIÓN
+
+# Ingress configuration (opcional)
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: dfs.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: dfs-metadata
+          port: 8000
+    - host: grafana.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: dfs-grafana
+          port: 3000
+  tls:
+    - secretName: dfs-tls
+      hosts:
+        - dfs.example.com
+        - grafana.example.com
+
+# ServiceMonitor for Prometheus Operator (opcional)
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+
+# NetworkPolicy (opcional, para seguridad)
+networkPolicy:
+  enabled: false
+  policyTypes:
+    - Ingress
+    - Egress
+
+# PodDisruptionBudget
+podDisruptionBudget:
+  metadata:
+    enabled: true
+    minAvailable: 1
+  datanode:
+    enabled: true
+    minAvailable: 2
+
+# Autoscaling (HPA) - experimental
+autoscaling:
+  datanode:
+    enabled: false
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80

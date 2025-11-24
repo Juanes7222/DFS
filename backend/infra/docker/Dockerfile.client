@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copiar shared
+COPY shared/ /home/ubuntu/dfs-system/shared/
+
+# Copiar client
+COPY client/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY client/ .
+
+ENTRYPOINT ["python", "dfs_cli.py"]
+CMD ["--help"]

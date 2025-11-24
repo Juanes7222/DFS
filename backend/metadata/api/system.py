@@ -55,7 +55,7 @@ async def root():
         "storage_initialized": context.storage is not None,
         "replicator_initialized": context.replicator is not None,
         "lease_manager_initialized": context.lease_manager is not None,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "endpoints": {
             "api_docs": "/docs",
             "health": "/api/v1/health",
@@ -90,7 +90,7 @@ async def health_check():
                 status="degraded",
                 details={
                     "error": "Timeout obteniendo nodos",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
             )
         
@@ -104,7 +104,7 @@ async def health_check():
             "total_nodes": len(nodes),
             "active_nodes": len(active_nodes),
             "replication_factor": config.replication_factor,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         
         return HealthResponse(status=status_value, details=details)
@@ -213,7 +213,7 @@ async def cleanup_orphaned_data():
         return {
             "status": "completed",
             "message": "Cleanup functionality pending implementation",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     
     except Exception as e:

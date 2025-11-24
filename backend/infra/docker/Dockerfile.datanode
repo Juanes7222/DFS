@@ -1,0 +1,16 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copiar shared
+COPY shared/ /home/ubuntu/dfs-system/shared/
+
+# Copiar datanode
+COPY datanode/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY datanode/ .
+
+EXPOSE 8001
+
+CMD ["python", "main.py"]

@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dfs-metadata
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: dfs-metadata
+    component: master
+    app.kubernetes.io/name: dfs-metadata
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.metadata.replicaCount }}
+  selector:
+    matchLabels:
+      app: dfs-metadata
+  template:
+    metadata:
+      labels:
+        app: dfs-metadata
+        component: master
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: metadata
+        image: "{{ .Values.metadata.image.repository }}:{{ .Values.metadata.image.tag }}"
+        imagePullPolicy: {{ .Values.metadata.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.metadata.service.targetPort }}
+          protocol: TCP
+        env:
+        {{- range .Values.metadata.env }}
+        - name: {{ .name }}
+          value: {{ .value | quote }}
+        {{- end }}
+        livenessProbe:
+          {{- toYaml .Values.metadata.livenessProbe | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.metadata.readinessProbe | nindent 10 }}
+        resources:
+          {{- toYaml .Values.metadata.resources | nindent 10 }}
+        volumeMounts:
+        - name: metadata-storage
+          mountPath: /tmp
+      volumes:
+      - name: metadata-storage
+        {{- if .Values.metadata.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: dfs-metadata-pvc
+        {{- else }}
+        emptyDir: {}
+        {{- end }}

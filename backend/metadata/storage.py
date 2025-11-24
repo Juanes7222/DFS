@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
@@ -135,7 +135,7 @@ class MetadataStorage(MetadataStorageProtocol):
         """Crea metadata de archivo."""
         async with self.lock:
             file_id = uuid4()
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             # Convertir chunks a ChunkEntry sin réplicas aún
             chunk_entries: List[ChunkEntry] = []
@@ -225,7 +225,7 @@ class MetadataStorage(MetadataStorageProtocol):
                                 node_id=node_id,
                                 url=self._node_id_to_url(node_id),
                                 state=ChunkState.COMMITTED,
-                                last_heartbeat=datetime.utcnow(),
+                                last_heartbeat=datetime.now(timezone.utc),
                                 checksum_verified=True,
                             )
                             chunk.replicas.append(replica)
@@ -242,7 +242,7 @@ class MetadataStorage(MetadataStorageProtocol):
                 chunks_json = json.dumps(
                     [c.model_dump(mode="json") for c in chunk_entries]
                 )
-                now = datetime.utcnow().isoformat()
+                now = datetime.now(timezone.utc).isoformat()
 
                 conn.execute(
                     "UPDATE files SET chunks_json = ?, modified_at = ? WHERE file_id = ?",
@@ -297,7 +297,7 @@ class MetadataStorage(MetadataStorageProtocol):
                 if permanent:
                     result = conn.execute("DELETE FROM files WHERE path = ?", (path,))
                 else:
-                    now = datetime.utcnow().isoformat()
+                    now = datetime.now(timezone.utc).isoformat()
                     result = conn.execute(
                         "UPDATE files SET is_deleted = 1, deleted_at = ? WHERE path = ? AND is_deleted = 0",
                         (now, path),
@@ -321,7 +321,7 @@ class MetadataStorage(MetadataStorageProtocol):
     ) -> None:
         """Actualiza heartbeat de un nodo."""
         async with self.lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             threshold = now - timedelta(seconds=config.node_timeout)
 
             conn = self._conn
@@ -404,7 +404,7 @@ class MetadataStorage(MetadataStorageProtocol):
         """Obtiene nodos activos."""
         # Lectura simple sin lock
         threshold = (
-            datetime.utcnow() - timedelta(seconds=config.node_timeout)
+            datetime.now(timezone.utc) - timedelta(seconds=config.node_timeout)
         ).isoformat()
 
         rows = self._conn.execute(
@@ -415,6 +415,8 @@ class MetadataStorage(MetadataStorageProtocol):
             """,
             (NodeState.ACTIVE.value, threshold),
         ).fetchall()
+        
+        logger.info(f"Active nodes found: {rows}")
 
         return [self._row_to_node_info(row) for row in rows]
 
@@ -425,7 +427,7 @@ class MetadataStorage(MetadataStorageProtocol):
         async with self.lock:
             await self.cleanup_expired_leases()
 
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             # Verificar si ya existe un lease activo
             row = self._conn.execute(
@@ -469,7 +471,7 @@ class MetadataStorage(MetadataStorageProtocol):
     async def cleanup_expired_leases(self) -> None:
         """Limpia leases expirados."""
         async with self.lock:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             result = self._conn.execute(
                 "DELETE FROM leases WHERE expires_at <= ?", (now,)
             )

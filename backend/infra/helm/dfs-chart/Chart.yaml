@@ -1,0 +1,16 @@
+apiVersion: v2
+name: dfs
+description: A Helm chart for Distributed File System (DFS)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - distributed-filesystem
+  - storage
+  - dfs
+home: https://github.com/your-org/dfs-system
+sources:
+  - https://github.com/your-org/dfs-system
+maintainers:
+  - name: Manus AI
+    email: support@manus.im

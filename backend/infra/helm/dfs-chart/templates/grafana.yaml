@@ -1,0 +1,88 @@
+{{- if .Values.grafana.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dfs-grafana
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: dfs-grafana
+    app.kubernetes.io/name: dfs-grafana
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dfs-grafana
+  template:
+    metadata:
+      labels:
+        app: dfs-grafana
+    spec:
+      containers:
+      - name: grafana
+        image: "{{ .Values.grafana.image.repository }}:{{ .Values.grafana.image.tag }}"
+        imagePullPolicy: {{ .Values.grafana.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 3000
+          protocol: TCP
+        env:
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: {{ .Values.grafana.adminPassword | quote }}
+        - name: GF_USERS_ALLOW_SIGN_UP
+          value: "false"
+        resources:
+          {{- toYaml .Values.grafana.resources | nindent 10 }}
+        volumeMounts:
+        - name: storage
+          mountPath: /var/lib/grafana
+      volumes:
+      - name: storage
+        {{- if .Values.grafana.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: dfs-grafana-pvc
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dfs-grafana
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: dfs-grafana
+    app.kubernetes.io/name: dfs-grafana
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  type: {{ .Values.grafana.service.type }}
+  ports:
+  - port: {{ .Values.grafana.service.port }}
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  selector:
+    app: dfs-grafana
+---
+{{- if .Values.grafana.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dfs-grafana-pvc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: dfs-grafana
+    app.kubernetes.io/name: dfs-grafana
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  accessModes:
+    - {{ .Values.grafana.persistence.accessMode }}
+  {{- if .Values.grafana.persistence.storageClass }}
+  storageClassName: {{ .Values.grafana.persistence.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.grafana.persistence.size }}
+{{- end }}
+{{- end }}

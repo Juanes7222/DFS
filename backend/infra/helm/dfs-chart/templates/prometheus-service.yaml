@@ -1,0 +1,42 @@
+{{- if .Values.prometheus.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dfs-prometheus
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: dfs-prometheus
+    app.kubernetes.io/name: dfs-prometheus
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  type: {{ .Values.prometheus.service.type }}
+  ports:
+  - port: {{ .Values.prometheus.service.port }}
+    targetPort: 9090
+    protocol: TCP
+    name: http
+  selector:
+    app: dfs-prometheus
+---
+{{- if .Values.prometheus.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dfs-prometheus-pvc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: dfs-prometheus
+    app.kubernetes.io/name: dfs-prometheus
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  accessModes:
+    - {{ .Values.prometheus.persistence.accessMode }}
+  {{- if .Values.prometheus.persistence.storageClass }}
+  storageClassName: {{ .Values.prometheus.persistence.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.prometheus.persistence.size }}
+{{- end }}
+{{- end }}

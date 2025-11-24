@@ -3,7 +3,7 @@ Módulo de seguridad para DFS - Versión refactorizada
 """
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Any, cast, List
 
 from core.config import config
@@ -72,7 +72,7 @@ class JWTManager:
         if expires_delta is None:
             expires_delta = timedelta(minutes=60)
 
-        expires_at = datetime.utcnow() + expires_delta
+        expires_at = datetime.now(timezone.utc) + expires_delta
 
         payload = {
             "sub": username,
@@ -81,7 +81,7 @@ class JWTManager:
             # PyJWT acepta datetime para exp si usa opcionales, pero para consistencia
             # convertimos a timestamp (segundos)
             "exp": int(expires_at.timestamp()),
-            "iat": int(datetime.utcnow().timestamp()),
+            "iat": int(datetime.now(timezone.utc).timestamp()),
         }
 
         # Aseguramos al analizador que jwt no es None aquí

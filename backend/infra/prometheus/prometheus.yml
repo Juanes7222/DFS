@@ -1,0 +1,47 @@
+# Configuración de Prometheus para DFS
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'dfs-cluster'
+    environment: 'development'
+
+# Alertmanager configuration (opcional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+# Reglas de alertas (opcional)
+# rule_files:
+#   - 'alerts/*.yml'
+
+scrape_configs:
+  # Metadata Service
+  - job_name: 'dfs-metadata'
+    static_configs:
+      - targets: ['metadata-service:8000']
+        labels:
+          service: 'metadata'
+          component: 'master'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # DataNodes
+  - job_name: 'dfs-datanodes'
+    static_configs:
+      - targets:
+          - 'datanode1:8001'
+          - 'datanode2:8002'
+          - 'datanode3:8003'
+        labels:
+          service: 'datanode'
+          component: 'storage'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

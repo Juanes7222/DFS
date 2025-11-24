@@ -6,7 +6,7 @@ Gestión de leases para operaciones concurrentes - Versión completa
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List
 from uuid import UUID
 
@@ -152,7 +152,7 @@ class LeaseManager:
         Obtiene la lista de leases activos.
         """
         async with self.lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             active_leases: List[LeaseInfo] = []
             expired_paths: List[str] = []
 
@@ -171,7 +171,7 @@ class LeaseManager:
     async def cleanup_expired_leases(self):
         """Limpia leases expirados localmente."""
         async with self.lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             expired_paths = [
                 p for p, li in self.local_leases.items() if li.is_expired(now)
             ]
@@ -182,7 +182,7 @@ class LeaseManager:
 
     def get_lease_stats(self) -> Dict:
         """Obtiene estadísticas de leases."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         total_leases = len(self.local_leases)
         active_leases = sum(
             1
@@ -216,23 +216,23 @@ class LeaseInfo:
         self.client_id = client_id
         # expires_at puede ser pasado (datetime) o None -> calculamos a partir de timeout
         self.expires_at: datetime = expires_at or (
-            datetime.utcnow() + timedelta(seconds=timeout_seconds)
+            datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
         )
-        self.created_at: datetime = datetime.utcnow()
+        self.created_at: datetime = datetime.now(timezone.utc)
 
     def is_valid(self) -> bool:
         """Verifica si el lease es válido."""
-        return self.expires_at > datetime.utcnow()
+        return self.expires_at > datetime.now(timezone.utc)
 
     def is_expired(self, now: Optional[datetime] = None) -> bool:
         """Verifica si el lease ha expirado."""
         if now is None:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
         return self.expires_at <= now
 
     def time_remaining(self) -> float:
         """Obtiene el tiempo restante del lease en segundos."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if self.is_expired(now):
             return 0.0
         return (self.expires_at - now).total_seconds()

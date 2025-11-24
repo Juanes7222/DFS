@@ -1,0 +1,21 @@
+{{- if .Values.metadata.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dfs-metadata-pvc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: dfs-metadata
+    component: master
+    app.kubernetes.io/name: dfs-metadata
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  accessModes:
+    - {{ .Values.metadata.persistence.accessMode }}
+  {{- if .Values.metadata.persistence.storageClass }}
+  storageClassName: {{ .Values.metadata.persistence.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.metadata.persistence.size }}
+{{- end }}

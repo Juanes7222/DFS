@@ -294,7 +294,7 @@ NODE_TIMEOUT = 30  # segundos
 
 def check_node_health():
     """Verificar salud de todos los nodos"""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     for node_id, node in nodes_db.items():
         time_since_heartbeat = (now - node.last_heartbeat).total_seconds()
@@ -1288,7 +1288,7 @@ GARBAGE_COLLECTION_THRESHOLD = timedelta(days=7)
 async def garbage_collector():
     """Eliminar chunks de archivos eliminados antiguos"""
     while True:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         chunks_to_delete = []
         
         # Identificar archivos elegibles para garbage collection
@@ -1863,7 +1863,7 @@ def create_access_token(user_id: str, permissions: List[str]) -> str:
     payload = {
         "sub": user_id,
         "permissions": permissions,
-        "exp": datetime.utcnow() + timedelta(hours=24)
+        "exp": datetime.now(timezone.utc) + timedelta(hours=24)
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return token

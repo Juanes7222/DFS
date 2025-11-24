@@ -53,6 +53,7 @@ async def upload_init(request: UploadInitRequest):
     logger.info(f"Upload init: {request.path}, size: {format_bytes(request.size)}")
     
     storage = get_storage()
+    logger.info(f"storage: {storage}")
     
     try:
         # Calcular número de chunks
@@ -60,6 +61,7 @@ async def upload_init(request: UploadInitRequest):
         
         # Obtener nodos activos
         nodes = await storage.get_active_nodes()
+        logger.info(f"Nodos activos disponibles: {len(nodes)}")
         if len(nodes) < config.replication_factor:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

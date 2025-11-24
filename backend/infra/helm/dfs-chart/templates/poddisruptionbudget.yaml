@@ -1,0 +1,34 @@
+{{- if .Values.podDisruptionBudget.metadata.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dfs-metadata-pdb
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: dfs-metadata
+    app.kubernetes.io/name: dfs-metadata
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.metadata.minAvailable }}
+  selector:
+    matchLabels:
+      app: dfs-metadata
+{{- end }}
+---
+{{- if .Values.podDisruptionBudget.datanode.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dfs-datanode-pdb
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: dfs-datanode
+    app.kubernetes.io/name: dfs-datanode
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.datanode.minAvailable }}
+  selector:
+    matchLabels:
+      app: dfs-datanode
+{{- end }}

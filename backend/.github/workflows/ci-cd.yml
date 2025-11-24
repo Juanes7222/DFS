@@ -1,0 +1,417 @@
+name: DFS CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+
+jobs:
+  # ============================================================================
+  # LINT Y TESTS
+  # ============================================================================
+  
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort mypy
+      
+      - name: Run flake8
+        run: |
+          flake8 metadata-service/ datanode/ client/ shared/ --max-line-length=120 --exclude=__pycache__
+      
+      - name: Check code formatting with black
+        run: |
+          black --check metadata-service/ datanode/ client/ shared/
+      
+      - name: Check import sorting with isort
+        run: |
+          isort --check-only metadata-service/ datanode/ client/ shared/
+      
+      - name: Type checking with mypy
+        run: |
+          mypy metadata-service/ datanode/ client/ shared/ --ignore-missing-imports
+        continue-on-error: true  # No fallar por errores de tipos
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov pytest-asyncio httpx
+          pip install -r metadata-service/requirements.txt
+          pip install -r datanode/requirements.txt
+          pip install -r client/requirements.txt
+      
+      - name: Run unit tests
+        run: |
+          pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Build images
+        run: |
+          docker-compose build
+      
+      - name: Start services
+        run: |
+          docker-compose up -d
+          sleep 30  # Esperar a que los servicios inicien
+      
+      - name: Run integration tests
+        run: |
+          docker-compose run --rm client bash -c "cd /app/tests && python test_e2e.py"
+      
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          docker-compose logs
+      
+      - name: Cleanup
+        if: always()
+        run: |
+          docker-compose down -v
+
+  # ============================================================================
+  # BUILD Y PUSH DE IMÁGENES DOCKER
+  # ============================================================================
+  
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    needs: [lint, test, integration-test]
+    if: github.event_name == 'push' || github.event_name == 'release'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        component: [metadata, datanode, client]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Log in to Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.component }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: infra/docker/Dockerfile.${{ matrix.component }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================================================
+  # SECURITY SCANNING
+  # ============================================================================
+  
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event_name == 'push' || github.event_name == 'release'
+    strategy:
+      matrix:
+        component: [metadata, datanode, client]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.component }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results-${{ matrix.component }}.sarif'
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results-${{ matrix.component }}.sarif'
+
+  # ============================================================================
+  # HELM CHART VALIDATION
+  # ============================================================================
+  
+  helm-validate:
+    name: Validate Helm Chart
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+      
+      - name: Lint Helm chart
+        run: |
+          helm lint infra/helm/dfs-chart
+      
+      - name: Template Helm chart
+        run: |
+          helm template test-release infra/helm/dfs-chart --debug
+      
+      - name: Install kubeval
+        run: |
+          wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+          tar xf kubeval-linux-amd64.tar.gz
+          sudo mv kubeval /usr/local/bin
+      
+      - name: Validate Kubernetes manifests
+        run: |
+          helm template test-release infra/helm/dfs-chart | kubeval --strict
+
+  # ============================================================================
+  # DEPLOY A STAGING
+  # ============================================================================
+  
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build-and-push, security-scan, helm-validate]
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: staging
+      url: https://dfs-staging.example.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+      
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > kubeconfig
+          export KUBECONFIG=./kubeconfig
+      
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+      
+      - name: Deploy with Helm
+        run: |
+          export KUBECONFIG=./kubeconfig
+          helm upgrade --install dfs-staging infra/helm/dfs-chart \
+            --namespace dfs-staging \
+            --create-namespace \
+            --set metadata.image.tag=${{ github.sha }} \
+            --set datanode.image.tag=${{ github.sha }} \
+            --set ingress.enabled=true \
+            --set ingress.hosts[0].host=dfs-staging.example.com \
+            --wait --timeout 10m
+      
+      - name: Verify deployment
+        run: |
+          export KUBECONFIG=./kubeconfig
+          kubectl rollout status deployment/dfs-metadata -n dfs-staging
+          kubectl rollout status statefulset/dfs-datanode -n dfs-staging
+      
+      - name: Run smoke tests
+        run: |
+          export KUBECONFIG=./kubeconfig
+          kubectl run smoke-test --rm -i --restart=Never \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-client:${{ github.sha }} \
+            --namespace=dfs-staging \
+            -- python -c "import httpx; r = httpx.get('http://dfs-metadata:8000/api/v1/health'); assert r.status_code == 200"
+
+  # ============================================================================
+  # DEPLOY A PRODUCTION
+  # ============================================================================
+  
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-and-push, security-scan, helm-validate]
+    if: github.event_name == 'release'
+    environment:
+      name: production
+      url: https://dfs.example.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+      
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 -d > kubeconfig
+          export KUBECONFIG=./kubeconfig
+      
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+      
+      - name: Backup metadata
+        run: |
+          export KUBECONFIG=./kubeconfig
+          METADATA_POD=$(kubectl get pod -n dfs -l app=dfs-metadata -o jsonpath='{.items[0].metadata.name}')
+          kubectl cp dfs/$METADATA_POD:/tmp/dfs_metadata.db ./backup_$(date +%Y%m%d_%H%M%S).db
+      
+      - name: Deploy with Helm
+        run: |
+          export KUBECONFIG=./kubeconfig
+          helm upgrade --install dfs-prod infra/helm/dfs-chart \
+            --namespace dfs \
+            --create-namespace \
+            --set metadata.image.tag=${{ github.event.release.tag_name }} \
+            --set datanode.image.tag=${{ github.event.release.tag_name }} \
+            --set ingress.enabled=true \
+            --set ingress.hosts[0].host=dfs.example.com \
+            --set grafana.service.type=LoadBalancer \
+            --wait --timeout 15m
+      
+      - name: Verify deployment
+        run: |
+          export KUBECONFIG=./kubeconfig
+          kubectl rollout status deployment/dfs-metadata -n dfs
+          kubectl rollout status statefulset/dfs-datanode -n dfs
+      
+      - name: Run smoke tests
+        run: |
+          export KUBECONFIG=./kubeconfig
+          kubectl run smoke-test --rm -i --restart=Never \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-client:${{ github.event.release.tag_name }} \
+            --namespace=dfs \
+            -- python -c "import httpx; r = httpx.get('http://dfs-metadata:8000/api/v1/health'); assert r.status_code == 200"
+      
+      - name: Notify deployment
+        if: success()
+        run: |
+          echo "Deployment successful to production"
+          # Aquí puedes agregar notificaciones a Slack, email, etc.
+
+  # ============================================================================
+  # PERFORMANCE TESTS
+  # ============================================================================
+  
+  performance-test:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/develop'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+      
+      - name: Run performance tests
+        run: |
+          k6 run tests/performance/load_test.js --out json=results.json
+        continue-on-error: true
+      
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-results
+          path: results.json
+
+  # ============================================================================
+  # RELEASE NOTES
+  # ============================================================================
+  
+  release-notes:
+    name: Generate Release Notes
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Generate changelog
+        id: changelog
+        uses: metcalfc/changelog-generator@v4.0.1
+        with:
+          myToken: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Update release notes
+        uses: actions/github-script@v6
+        with:
+          script: |
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: context.payload.release.id,
+              body: `${{ steps.changelog.outputs.changelog }}`
+            })

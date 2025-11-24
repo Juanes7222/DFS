@@ -1,12 +1,15 @@
-"""DataNode unificado - Combina las mejores características de ambas implementaciones"""
+"""DataNode unificado - Versión mejorada con mejor manejo de recursos y errores"""
 
 import logging
+import sys
 from contextlib import asynccontextmanager
 from typing import Optional
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, UploadFile, Query
+from fastapi import FastAPI, HTTPException, UploadFile, Query, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+import uvicorn
 
 from core.config import config
 from core.exceptions import DFSStorageError
@@ -21,17 +24,14 @@ class DataNodeServer:
     """Servidor DataNode unificado."""
 
     def __init__(self, node_id: Optional[str] = None, port: Optional[int] = None):
-        self.node_id = (
-            node_id or f"node-{config.datanode_host}-{port or config.datanode_port}"
-        )
         self.port = port or config.datanode_port
+        self.node_id = (
+            node_id or f"node-{config.datanode_host}-{self.port}"
+        )
         self.storage_path = config.storage_path / self.node_id
 
-        self.storage = ChunkStorage(self.storage_path)
-        self.heartbeat_manager = HeartbeatManager(
-            node_id=self.node_id, storage=self.storage, metadata_url=config.metadata_url
-        )
-
+        self.storage: Optional[ChunkStorage] = None
+        self.heartbeat_manager: Optional[HeartbeatManager] = None
         self.app = self._create_app()
 
     def _create_app(self) -> FastAPI:
@@ -40,11 +40,15 @@ class DataNodeServer:
         @asynccontextmanager
         async def lifespan(app: FastAPI):
             """Gestión del ciclo de vida del DataNode"""
-            # Startup
-            await self.start()
-            yield
-            # Shutdown
-            await self.stop()
+            try:
+                await self.start()
+                logger.info(f"DataNode {self.node_id} listo para recibir peticiones")
+                yield
+            except Exception as e:
+                logger.error(f"Error durante inicio del DataNode: {e}", exc_info=True)
+                raise
+            finally:
+                await self.stop()
         
         app = FastAPI(
             title=f"DFS DataNode {self.node_id}",
@@ -53,27 +57,75 @@ class DataNodeServer:
             lifespan=lifespan,
         )
 
-        # Middleware
+        # CORS Middleware - Permitir peticiones desde el frontend
+        cors_origins = ["*"] if config.cors_allow_all else config.cors_origins
+        
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+        # Metrics Middleware
         app.add_middleware(MetricsMiddleware)
 
-        # Endpoints
-        @app.put("/api/v1/chunks/{chunk_id}")
+        @app.put(
+            "/api/v1/chunks/{chunk_id}",
+            status_code=status.HTTP_201_CREATED,
+            response_model=dict
+        )
         async def put_chunk(
-            chunk_id: UUID, file: UploadFile, replicate_to: Optional[str] = Query(None)
+            chunk_id: UUID, 
+            file: UploadFile, 
+            replicate_to: Optional[str] = Query(None, description="URL del siguiente nodo para replicación")
         ):
             """Almacena un chunk con replicación en pipeline."""
+            if not self.storage:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Storage no inicializado"
+                )
+
             try:
                 chunk_data = await file.read()
+                
+                if not chunk_data:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="El chunk está vacío"
+                    )
+
                 result = await self.storage.store_chunk(
                     chunk_id, chunk_data, replicate_to
                 )
+                
+                logger.info(f"Chunk {chunk_id} almacenado exitosamente")
                 return result
+                
             except DFSStorageError as e:
-                raise HTTPException(status_code=500, detail=str(e))
+                logger.error(f"Error almacenando chunk {chunk_id}: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error de almacenamiento: {str(e)}"
+                )
+            except Exception as e:
+                logger.error(f"Error inesperado almacenando chunk {chunk_id}: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Error interno del servidor"
+                )
 
         @app.get("/api/v1/chunks/{chunk_id}")
         async def get_chunk(chunk_id: UUID):
             """Recupera un chunk."""
+            if not self.storage:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Storage no inicializado"
+                )
+
             try:
                 chunk_data, checksum = await self.storage.retrieve_chunk(chunk_id)
 
@@ -89,54 +141,90 @@ class DataNodeServer:
                         "Content-Length": str(len(chunk_data)),
                     },
                 )
+                
             except DFSStorageError as e:
-                raise HTTPException(status_code=404, detail=str(e))
+                logger.warning(f"Chunk {chunk_id} no encontrado: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Chunk no encontrado: {str(e)}"
+                )
+            except Exception as e:
+                logger.error(f"Error inesperado recuperando chunk {chunk_id}: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Error interno del servidor"
+                )
 
-        # Health endpoints
         @app.get("/health")
         async def health():
-            return {"status": "healthy", "node_id": self.node_id}
+            """Health check con información detallada."""
+            is_healthy = (
+                self.storage is not None and 
+                self.heartbeat_manager is not None and
+                self.heartbeat_manager.is_running()
+            )
+            
+            return {
+                "status": "healthy" if is_healthy else "unhealthy",
+                "node_id": self.node_id,
+                "port": self.port,
+                "storage_initialized": self.storage is not None,
+                "heartbeat_active": self.heartbeat_manager is not None and self.heartbeat_manager.is_running()
+            }
 
         @app.get("/metrics")
         async def metrics():
+            """Endpoint de métricas."""
             return metrics_endpoint()
 
         return app
 
     async def start(self):
         """Inicia el DataNode."""
-        import sys
-        sys.stderr.write(f"[DEBUG] Iniciando DataNode {self.node_id} en puerto {self.port}\n")
-        sys.stderr.flush()
         logger.info(f"Iniciando DataNode {self.node_id} en puerto {self.port}")
 
-        # Inicializar storage
-        await self.storage.initialize()
-        sys.stderr.write(f"[DEBUG] Storage inicializado\n")
-        sys.stderr.flush()
+        try:
+            # Inicializar storage
+            self.storage = ChunkStorage(self.storage_path)
+            await self.storage.initialize()
+            logger.info("Storage inicializado correctamente")
 
-        # Iniciar heartbeat
-        sys.stderr.write(f"[DEBUG] Metadata URL: {config.metadata_url}\n")
-        sys.stderr.flush()
-        await self.heartbeat_manager.start()
-        sys.stderr.write(f"[DEBUG] Heartbeat manager iniciado\n")
-        sys.stderr.flush()
+            # Iniciar heartbeat
+            self.heartbeat_manager = HeartbeatManager(
+                node_id=self.node_id,
+                storage=self.storage,
+                metadata_url=config.metadata_url,
+                port=self.port
+            )
+            await self.heartbeat_manager.start()
+            logger.info("Heartbeat manager iniciado correctamente")
 
-        logger.info(f"DataNode {self.node_id} iniciado correctamente")
+        except Exception as e:
+            logger.error(f"Error durante la inicialización: {e}", exc_info=True)
+            await self.stop()
+            raise
 
     async def stop(self):
-        """Detiene el DataNode."""
+        """Detiene el DataNode de forma segura."""
         logger.info(f"Deteniendo DataNode {self.node_id}")
-        await self.heartbeat_manager.stop()
-        logger.info(f"DataNode {self.node_id} detenido")
+        
+        try:
+            if self.heartbeat_manager:
+                await self.heartbeat_manager.stop()
+                logger.info("Heartbeat manager detenido")
+                
+            if self.storage:
+                # Agregar cleanup si ChunkStorage lo soporta
+                logger.info("Storage cerrado")
+                
+        except Exception as e:
+            logger.error(f"Error durante el apagado: {e}", exc_info=True)
+        finally:
+            logger.info(f"DataNode {self.node_id} detenido")
 
 
-def main():
-    """Función principal para ejecutar el DataNode."""
-    import uvicorn
-    import sys
-    
-    # Configurar logging básico
+def setup_logging():
+    """Configura el sistema de logging."""
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -144,9 +232,31 @@ def main():
             logging.StreamHandler(sys.stdout)
         ]
     )
+    
+    # Reducir verbosidad de librerías externas
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
-    server = DataNodeServer()
-    uvicorn.run(server.app, host=config.datanode_host, port=server.port)
+
+def main():
+    """Función principal para ejecutar el DataNode."""
+    setup_logging()
+    
+    try:
+        server = DataNodeServer()
+        logger.info(f"Iniciando servidor en {config.datanode_host}:{server.port}")
+        
+        uvicorn.run(
+            server.app,
+            host=config.datanode_host,
+            port=server.port,
+            log_config=None  # Usar nuestra configuración de logging
+        )
+        
+    except KeyboardInterrupt:
+        logger.info("Servidor detenido por el usuario")
+    except Exception as e:
+        logger.error(f"Error fatal: {e}", exc_info=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

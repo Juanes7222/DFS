@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dfs-datanode
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: dfs-datanode
+    component: storage
+    app.kubernetes.io/name: dfs-datanode
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  clusterIP: None  # Headless service for StatefulSet
+  ports:
+  - port: 8001
+    targetPort: 8001
+    protocol: TCP
+    name: http
+  selector:
+    app: dfs-datanode

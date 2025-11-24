@@ -2,7 +2,8 @@
 
 import os
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import List
 
 
 @dataclass
@@ -14,7 +15,7 @@ class DFSConfig:
     metadata_port: int = int(os.getenv("DFS_METADATA_PORT", "8000"))
 
     # DataNode
-    datanode_host: str = os.getenv("DFS_DATANODE_HOST", "0.0.0.0")
+    datanode_host: str = os.getenv("DFS_DATANODE_HOST", "localhost")
     datanode_port: int = int(os.getenv("DFS_DATANODE_PORT", "8001"))
     storage_path: Path = Path(os.getenv("DFS_STORAGE_PATH", "/tmp/dfs-data"))
 
@@ -41,6 +42,17 @@ class DFSConfig:
     # Logging
     log_level: str = os.getenv("DFS_LOG_LEVEL", "INFO")
     log_format: str = os.getenv("DFS_LOG_FORMAT", "detailed")
+    
+    heartbeat_interval: int = int(os.getenv("HEARTBEAT_INTERVAL", 30))
+    
+    # CORS - Orígenes permitidos
+    cors_origins: List[str] = field(default_factory=lambda: os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
+    ).split(","))
+    
+    # Permitir todos los orígenes en desarrollo (usar con cuidado)
+    cors_allow_all: bool = os.getenv("CORS_ALLOW_ALL", "false").lower() == "true"
 
     @property
     def metadata_url(self) -> str:

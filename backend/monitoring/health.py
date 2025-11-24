@@ -3,7 +3,7 @@ Sistema de health checks - Versión completa
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 import httpx
@@ -44,7 +44,7 @@ class HealthChecker:
                 details={
                     "checks": checks,
                     "system": details,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
             )
 
@@ -53,7 +53,7 @@ class HealthChecker:
                 "status": overall_status,
                 "checks": checks,
                 "system": details,
-                "timestamp": datetime.utcnow(),
+                "timestamp": datetime.now(timezone.utc),
             }
 
             return health_response
@@ -62,7 +62,7 @@ class HealthChecker:
             logger.error(f"Error en health check: {e}")
             return HealthResponse(
                 status="unhealthy",
-                details={"error": str(e), "timestamp": datetime.utcnow().isoformat()},
+                details={"error": str(e), "timestamp": datetime.now(timezone.utc).isoformat()},
             )
 
     async def _perform_health_checks(self) -> Dict[str, Any]:
@@ -243,7 +243,7 @@ class HealthChecker:
         """Obtiene el health check desde la cache si está fresca."""
         if (
             self.last_update
-            and (datetime.utcnow() - self.last_update).total_seconds() < self.cache_ttl
+            and (datetime.now(timezone.utc) - self.last_update).total_seconds() < self.cache_ttl
             and self.health_cache
         ):
             return self.health_cache
@@ -280,14 +280,14 @@ class HealthChecker:
                 "status": "healthy",
                 "storage": storage_info,
                 "chunks": {"total": len(stored_chunks), "integrity": chunk_integrity},
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
         except Exception as e:
             return {
                 "status": "unhealthy",
                 "error": str(e),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
 
