@@ -34,7 +34,6 @@ param(
     [switch]$CleanAllJobs
 )
 
-# Configurar UTF-8 para la terminal
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 if ($IsWindows -or $env:OS -match "Windows") {
@@ -43,7 +42,6 @@ if ($IsWindows -or $env:OS -match "Windows") {
 
 $ErrorActionPreference = "Continue"
 
-# Guardar el script path al inicio antes de entrar en funciones
 $SCRIPT_PATH = $PSCommandPath
 if (-not $SCRIPT_PATH) {
     $SCRIPT_PATH = $MyInvocation.MyCommand.Path
@@ -60,7 +58,7 @@ Write-Section "Deteniendo Sistema DFS"
 
 $tempDir = if ($IsWindows -or $env:OS -match "Windows") { $env:TEMP } else { "/tmp" }
 $pidsFile = Join-Path $tempDir "dfs-system-pids.txt"
-$processesStopped = 0
+# $processesStopped = 0
 
 function Stop-PowerShellJobs {
     <#
@@ -126,68 +124,10 @@ function Stop-PowerShellJobs {
         Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
     }
     
-    # Limpiar todos los jobs completados restantes
     Get-Job | Where-Object { $_.State -eq "Completed" } | Remove-Job -Force -ErrorAction SilentlyContinue
     
     Write-Success "Jobs procesados: $stopped detenido(s), $($jobsToProcess.Count - $stopped) limpiado(s)"
     return $stopped
-}
-
-function Stop-DockerServices {
-    <#
-    .SYNOPSIS
-        Detiene contenedores Docker si están disponibles
-    #>
-    
-    if (-not (Get-Command docker-compose -ErrorAction SilentlyContinue)) {
-        return 0
-    }
-    
-    Write-Section "Verificando servicios Docker"
-    
-    # Usar la ruta del script guardada
-    if (-not $SCRIPT_PATH) {
-        Write-Info "No se pudo determinar la ruta del script, omitiendo Docker..."
-        return 0
-    }
-    
-    try {
-        $scriptDir = Split-Path -Parent $SCRIPT_PATH
-        $projectRoot = Split-Path -Parent $scriptDir
-        $composeFile = Join-Path $projectRoot "docker-compose.yml"
-        
-        if (-not (Test-Path $composeFile)) {
-            Write-Info "docker-compose.yml no encontrado, omitiendo..."
-            return 0
-        }
-        
-        Push-Location $projectRoot
-        
-        try {
-            $services = docker-compose ps --services 2>$null
-            
-            if ($services -and ($services | Where-Object { $_ -match '\S' })) {
-                Write-Info "Deteniendo contenedores Docker..."
-                docker-compose down 2>&1 | Out-Null
-                
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Success "Servicios Docker detenidos"
-                    return 1
-                } else {
-                    Write-Warning "Algunos servicios Docker no se pudieron detener"
-                    return 0
-                }
-            } else {
-                Write-Info "No hay servicios Docker en ejecución"
-                return 0
-            }
-        } finally {
-            Pop-Location
-        }
-    } catch {
-        Write-Warning "Error verificando Docker: $_"
-        return 0
-    }
 }
 
 function Stop-NativeProcesses {
@@ -244,7 +184,7 @@ function Stop-NativeProcesses {
         $processId = $pids[$service]
         
         try {
-            $process = Get-Process -Id $processId -ErrorAction Stop
+            # $process = Get-Process -Id $processId -ErrorAction Stop
             Write-Info "Deteniendo $service (PID: $processId)..."
             Stop-Process -Id $processId -Force -ErrorAction Stop
             Write-Success "$service detenido"
@@ -443,7 +383,7 @@ function Show-CleanupSummary {
     }
     
     Write-Host "`nPara reiniciar el sistema:" -ForegroundColor Cyan
-    Write-Host "  .\scripts\start-dfs.ps1" -ForegroundColor White
+    Write-Host "  .\scripts\start-all.ps1" -ForegroundColor White
     
     Write-Host "`nPara verificar procesos residuales:" -ForegroundColor Cyan
     Write-Host "  Get-Process python* | Where-Object { `$_.CommandLine -like '*backend*' }" -ForegroundColor White
@@ -456,31 +396,21 @@ function Show-CleanupSummary {
     Write-Host ""
 }
 
-# Ejecutar secuencia de detención
 $totalStopped = 0
 
-# 1. Detener PowerShell Jobs
 $totalStopped += Stop-PowerShellJobs -CleanAll $CleanAllJobs
 
-# 2. Detener Docker si está disponible
-$totalStopped += Stop-DockerServices
-
-# 3. Detener procesos nativos desde archivo de PIDs
 $totalStopped += Stop-NativeProcesses
 
-# 4. Buscar y detener procesos residuales
 $residualProcesses = Find-ResidualProcesses
 if ($residualProcesses) {
     $totalStopped += Stop-ResidualProcesses -Processes $residualProcesses
 }
 
-# 5. Limpiar variables de entorno
 Clear-EnvironmentVariables
 
-# 6. Limpiar archivos temporales
 $includeLogs = -not $KeepLogs
 $includeData = $CleanData
 Clear-TemporaryFiles -TempDir $tempDir -IncludeLogs $includeLogs -IncludeData $includeData
 
-# 7. Mostrar resumen
 Show-CleanupSummary -TotalStopped $totalStopped
