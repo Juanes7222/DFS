@@ -179,12 +179,11 @@ def create_app() -> FastAPI:
 
     return app
 
-
-# Crea la aplicación
 app = create_app()
 
-
-
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
 
 def main():
     """Función principal para ejecutar el servidor"""
