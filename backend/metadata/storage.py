@@ -62,7 +62,7 @@ class MetadataStorage(MetadataStorageProtocol):
             raise DFSMetadataError(f"Error inicializando storage: {e}")
 
     async def _create_tables(self) -> None:
-        """Crea las tablas necesarias"""
+        """Crea las tablas necesarias (ahora con campos extendidos para nodos)."""
         tables = [
             """
             CREATE TABLE IF NOT EXISTS files (
@@ -86,7 +86,13 @@ class MetadataStorage(MetadataStorageProtocol):
                 total_space INTEGER NOT NULL,
                 chunk_count INTEGER DEFAULT 0,
                 last_heartbeat TEXT NOT NULL,
-                state TEXT NOT NULL
+                state TEXT NOT NULL,
+                -- Nuevas columnas para registro automático / ZeroTier
+                zerotier_node_id TEXT,
+                zerotier_ip TEXT,
+                lease_ttl INTEGER DEFAULT 60,
+                boot_token TEXT,
+                version TEXT
             )
             """,
             """
@@ -117,6 +123,35 @@ class MetadataStorage(MetadataStorageProtocol):
             conn.execute(index_sql)
 
         conn.commit()
+
+        # Ejecutar migración ligera: si la tabla nodes existía sin las columnas nuevas,
+        # las agregamos con ALTER TABLE (SQLite permite ADD COLUMN).
+        self._migrate_node_table_if_needed()
+
+    def _migrate_node_table_if_needed(self) -> None:
+        """
+        Añade columnas a la tabla nodes si faltan (migración segura para DB existentes).
+        Esto se ejecuta después de crear tablas.
+        """
+        conn = self._conn
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(nodes)")
+        existing = [row["name"] for row in cur.fetchall()]
+
+        # Lista de (column_sql, column_name) para agregar si falta
+        needed = [
+            ("zerotier_node_id TEXT", "zerotier_node_id"),
+            ("zerotier_ip TEXT", "zerotier_ip"),
+            ("lease_ttl INTEGER DEFAULT 60", "lease_ttl"),
+            ("boot_token TEXT", "boot_token"),
+            ("version TEXT", "version"),
+        ]
+        for col_sql, col_name in needed:
+            if col_name not in existing:
+                logger.info("Migración: agregando columna %s a nodes", col_name)
+                conn.execute(f"ALTER TABLE nodes ADD COLUMN {col_sql}")
+        conn.commit()
+
 
     async def close(self) -> None:
         """Cierra la conexión"""
@@ -311,6 +346,121 @@ class MetadataStorage(MetadataStorageProtocol):
             except Exception as e:
                 logger.error(f"Error eliminando archivo {path}: {e}")
                 return False
+    
+    async def register_node(
+        self,
+        node_id: str,
+        zerotier_node_id: Optional[str],
+        zerotier_ip: str,
+        listening_ports: Optional[dict] = None,
+        capacity_gb: Optional[float] = None,
+        version: Optional[str] = None,
+        lease_ttl: Optional[int] = None,
+        boot_token: Optional[str] = None,
+        rack: Optional[str] = None,
+    ) -> None:
+        """
+        Inserta o actualiza la fila de 'nodes' cuando un nodo se registra por primera vez.
+        - node_id: id del nodo (UUID o string persistente)
+        - zerotier_node_id: member id de ZeroTier (opcional)
+        - zerotier_ip: IP asignada por ZeroTier (string)
+        - listening_ports: dict con puertos, ej. {"storage":8001}
+        - capacity_gb: capacidad total reportada por el nodo
+        - version: versión del agente
+        - lease_ttl: ttl para heartbeats (opcional)
+        - boot_token: token de bootstrap usado (si quieres guardarlo)
+        - rack: etiqueta física/ lógica (opcional)
+        """
+        async with self.lock:
+            now = datetime.now(timezone.utc)
+            conn = self._conn
+
+            # Determine host/port from provided data: prefer zerotier_ip and storage port
+            host = zerotier_ip or "unknown"
+            port = 8001
+            if listening_ports and isinstance(listening_ports, dict):
+                try:
+                    port = int(listening_ports.get("storage", port))
+                except Exception:
+                    port = port
+
+            # Normalize capacity fields
+            total_space = int((capacity_gb or 0) * (1024**3)) if capacity_gb is not None else 0
+            free_space = total_space  # al registro inicial asumimos libre = total o 0 según preferencia
+            # Intentamos detectar si ya existe
+            row = conn.execute("SELECT node_id FROM nodes WHERE node_id = ?", (node_id,)).fetchone()
+
+            if row:
+                # Update existing
+                conn.execute(
+                    """
+                    UPDATE nodes SET
+                        zerotier_node_id = ?,
+                        zerotier_ip = ?,
+                        host = ?,
+                        port = ?,
+                        rack = ?,
+                        total_space = ?,
+                        free_space = ?,
+                        version = ?,
+                        boot_token = ?,
+                        lease_ttl = ?,
+                        last_heartbeat = ?,
+                        state = ?
+                    WHERE node_id = ?
+                    """,
+                    (
+                        zerotier_node_id,
+                        zerotier_ip,
+                        host,
+                        port,
+                        rack,
+                        total_space,
+                        free_space,
+                        version,
+                        boot_token,
+                        int(lease_ttl) if lease_ttl is not None else getattr(config, "lease_ttl", 60),
+                        now.isoformat(),
+                        NodeState.ACTIVE.value,
+                        node_id,
+                    ),
+                )
+            else:
+                # Insert new
+                conn.execute(
+                    """
+                    INSERT INTO nodes
+                    (node_id, zerotier_node_id, zerotier_ip, host, port, rack, free_space, total_space, chunk_count, last_heartbeat, state, lease_ttl, version, boot_token)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        node_id,
+                        zerotier_node_id,
+                        zerotier_ip,
+                        host,
+                        port,
+                        rack,
+                        free_space,
+                        total_space,
+                        0,
+                        now.isoformat(),
+                        NodeState.ACTIVE.value,
+                        int(lease_ttl) if lease_ttl is not None else getattr(config, "lease_ttl", 60),
+                        version,
+                        boot_token,
+                    ),
+                )
+
+            # After register, optionally mark stale nodes as INACTIVE by heartbeat threshold (existing logic)
+            threshold = now - timedelta(seconds=config.node_timeout)
+            conn.execute(
+                "UPDATE nodes SET state = ? WHERE last_heartbeat < ?",
+                (NodeState.INACTIVE.value, threshold.isoformat()),
+            )
+
+            conn.commit()
+            logger.info("Node registrado/actualizado: %s (%s)", node_id, zerotier_ip)
+
 
     async def update_node_heartbeat(
         self, node_id: str, free_space: int, total_space: int, chunk_ids: List[UUID]

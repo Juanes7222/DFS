@@ -184,6 +184,8 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
+
+
 def main():
     """Función principal para ejecutar el servidor"""
     import uvicorn

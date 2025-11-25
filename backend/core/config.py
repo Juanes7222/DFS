@@ -51,6 +51,17 @@ class DFSConfig:
     
     # Permitir todos los orígenes en desarrollo (usar con cuidado)
     cors_allow_all: bool = os.getenv("CORS_ALLOW_ALL", "false").lower() == "true"
+    
+    # Parámetros para registro automático de nodos
+    bootstrap_tokens = ["TOKEN_INICIAL_LARGO_AQUI"]  # lista de tokens válidos (puedes cargar desde archivo/env)
+    allow_open_registration = False  # si True permite registro sin token (solo pruebas)
+    lease_ttl = 60  # segundos
+    nodes_db_path = "/var/lib/dfs/nodes.db"  # en Windows: "C:\\ProgramData\\dfs\\nodes.db"
+    zerotier_api_token = os.getenv("ZEROTIER_API_TOKEN", None)  # opcional para autorizar members automáticamente
+    zerotier_network_id = os.getenv("ZEROTIER_NETWORK_ID", None)
+    zerotier_ip_prefix = "100."  # opcional: prefix para validar IPs que vienen por ZeroTier (ej. "100." o "10.147.")
+    replication_factor = 2
+
 
     @property
     def metadata_url(self) -> str:

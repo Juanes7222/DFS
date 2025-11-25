@@ -20,6 +20,7 @@ from .models import (
     UploadInitResponse,
     HealthResponse,
     SystemStats,
+    RegisterRequest
 )
 
 # Utilidades

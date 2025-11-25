@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Dict
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, ConfigDict
@@ -184,3 +184,13 @@ class SystemStats(BaseModel):
     used_space: int
     free_space: int
     replication_factor: int
+
+class RegisterRequest(BaseModel):
+    node_id: str = Field(..., description="UUID persistente del nodo")
+    zerotier_node_id: Optional[str] = Field(None, description="ZeroTier member id (opcional)")
+    zerotier_ip: str = Field(..., description="IP asignada por ZeroTier")
+    listening_ports: Optional[Dict[str,int]] = {}
+    capacity_gb: Optional[float] = None
+    version: Optional[str] = None
+    bootstrap_token: str = Field(..., description="Token de bootstrap para autenticación inicial")
+    lease_ttl: Optional[int] = None
