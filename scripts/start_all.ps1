@@ -44,10 +44,10 @@ $DATANODE_STARTUP_RETRIES = 10
 
 # Colores para output
 function Write-Section { param([string]$Message) Write-Host "`n=== $Message ===" -ForegroundColor Cyan }
-function Write-Success { param([string]$Message) Write-Host "✓ $Message" -ForegroundColor Green }
-function Write-Info { param([string]$Message) Write-Host "  $Message" -ForegroundColor Gray }
-function Write-Warning { param([string]$Message) Write-Host "⚠ $Message" -ForegroundColor Yellow }
-function Write-Failure { param([string]$Message) Write-Host "✗ $Message" -ForegroundColor Red }
+function Write-Success { param([string]$Message) Write-Host "$Message" -ForegroundColor Green }
+function Write-Info { param([string]$Message) Write-Host "$Message" -ForegroundColor Gray }
+function Write-Warning { param([string]$Message) Write-Host "$Message" -ForegroundColor Yellow }
+function Write-Failure { param([string]$Message) Write-Host "$Message" -ForegroundColor Red }
 
 Write-Section "Iniciando Sistema DFS"
 Write-Info "DataNodes a iniciar: $Nodes"

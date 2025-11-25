@@ -3,9 +3,9 @@ API Router para operaciones de nodos
 """
 
 import logging
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Request, Header
 
 from shared import HeartbeatRequest, NodeInfo, RegisterRequest
 
@@ -146,49 +146,76 @@ async def deactivate_node(node_id: str):
         )
 
 @router.post("/nodes/register")
-async def register_node(request: RegisterRequest):
+async def register_node(request: RegisterRequest, http_request: Request, authorization: Optional[str] = Header(None)):
     """
-    Registro automático de un nodo. Valida token y persiste el nodo.
+    Registro automático de un nodo. Valida token (body o Authorization header) y persiste el nodo.
     """
-    logger.info("Register request: node_id=%s zerotier_ip=%s", request.node_id, request.zerotier_ip)
+    # Determinar token: primero header Authorization Bearer, luego body
+    token = None
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
+    if not token:
+        token = request.bootstrap_token
+
+    logger.info("Register request: node_id=%s zerotier_ip=%s data_port=%s", 
+                request.node_id, request.zerotier_ip, request.data_port)
 
     # Validar token
-    tokens = getattr(config, "bootstrap_tokens", None)
+    token_config = getattr(config, "bootstrap_token", None)
     allow_open = getattr(config, "allow_open_registration", False)
+    logger.info("Validando token de registro para nodo: %s", request.node_id)
     if not allow_open:
-        if not tokens or request.bootstrap_token not in set(tokens):
+        if not token or (token_config and token != token_config):
             logger.warning("Registro rechazado por token inválido: %s", request.node_id)
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid bootstrap token")
 
     storage = get_storage()
     try:
-        # Llamar al nuevo método register_node en MetadataStorage
+        # Preparar listening_ports incluyendo data_port si se proporciona
+        listening_ports = request.listening_ports or {}
+        if request.data_port:
+            listening_ports["storage"] = request.data_port
+        
+        # Validar que zerotier_ip no sea None
+        if not request.zerotier_ip:
+            logger.error("Registro rechazado: zerotier_ip es requerido para %s", request.node_id)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail="zerotier_ip es requerido para el registro"
+            )
+
+        # Llamar al register_node en MetadataStorage
         await storage.register_node(
             node_id=request.node_id,
             zerotier_node_id=request.zerotier_node_id,
             zerotier_ip=request.zerotier_ip,
-            listening_ports=request.listening_ports or {},
+            listening_ports=listening_ports,
             capacity_gb=request.capacity_gb,
             version=request.version,
             lease_ttl=request.lease_ttl,
-            boot_token=request.bootstrap_token,
+            boot_token=token,
         )
 
-        # Opcional: auto-authorize en ZeroTier si está configurado
+        # Auto-authorize en ZeroTier (opcional) - usar httpx async en lugar de requests
         if getattr(config, "zerotier_api_token", None) and request.zerotier_node_id:
             try:
+                import httpx
                 ztoken = getattr(config, "zerotier_api_token")
                 netid = getattr(config, "zerotier_network_id")
-                url = f"https://my.zerotier.com/api/network/{netid}/member/{request.zerotier_node_id}"
-                headers = {"Authorization": f"token {ztoken}", "Content-Type": "application/json"}
+                url = f"https://my.zerotier.com/api/v1/network/{netid}/member/{request.zerotier_node_id}"
+                headers = {"Authorization": f"token {ztoken}"}
                 body = {"config": {"authorized": True}}
-                import requests
-                r = requests.post(url, json=body, headers=headers, timeout=10)
-                logger.info("ZeroTier authorize result=%s for member=%s", r.status_code, request.zerotier_node_id)
+                
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    r = await client.post(url, json=body, headers=headers)
+                    logger.info("ZeroTier authorize result=%s for member=%s", 
+                               r.status_code, request.zerotier_node_id)
             except Exception as e:
                 logger.error("ZeroTier authorization error: %s", e)
 
-        # Obtener peers activos para retornar (opcional)
+        # Construir peers activos
         try:
             peers = await storage.list_nodes()
         except Exception:
@@ -197,12 +224,15 @@ async def register_node(request: RegisterRequest):
         return {
             "status": "accepted",
             "assigned_role": "storage",
-            "config": {"replication_factor": getattr(config, "replication_factor", 2), "peers": peers},
+            "config": {
+                "replication_factor": getattr(config, "replication_factor", 2), 
+                "peers": peers
+            },
             "lease_ttl": getattr(config, "lease_ttl", 60),
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error registrando nodo: %s", e)
+        logger.error("Error registrando nodo: %s", e, exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

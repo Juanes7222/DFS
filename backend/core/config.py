@@ -2,8 +2,8 @@ import os
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List
-
-
+from dotenv import load_dotenv
+load_dotenv()
 @dataclass
 class DFSConfig:
     """Configuración centralizada del sistema DFS"""
@@ -53,14 +53,15 @@ class DFSConfig:
     cors_allow_all: bool = os.getenv("CORS_ALLOW_ALL", "false").lower() == "true"
     
     # Parámetros para registro automático de nodos
-    bootstrap_tokens = ["TOKEN_INICIAL_LARGO_AQUI"]  # lista de tokens válidos (puedes cargar desde archivo/env)
+    bootstrap_token = os.getenv("INITIAL_BOOTSTRAP_TOKEN", "")  # lista de tokens válidos (puedes cargar desde archivo/env)
     allow_open_registration = False  # si True permite registro sin token (solo pruebas)
     lease_ttl = 60  # segundos
     nodes_db_path = "/var/lib/dfs/nodes.db"  # en Windows: "C:\\ProgramData\\dfs\\nodes.db"
     zerotier_api_token = os.getenv("ZEROTIER_API_TOKEN", None)  # opcional para autorizar members automáticamente
     zerotier_network_id = os.getenv("ZEROTIER_NETWORK_ID", None)
     zerotier_ip_prefix = "100."  # opcional: prefix para validar IPs que vienen por ZeroTier (ej. "100." o "10.147.")
-    replication_factor = 2
+    replication_factor = 3
+    data_port = int(os.getenv("DATA_PORT", "5001"))
 
 
     @property

@@ -15,7 +15,8 @@ from core.config import config
 from core.exceptions import DFSStorageError
 from datanode.storage import ChunkStorage
 from datanode.heartbeat import HeartbeatManager
-from monitoring.metrics import metrics_endpoint, MetricsMiddleware
+import datanode.agent as agent
+# from monitoring.metrics import metrics_endpoint, MetricsMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ class DataNodeServer:
         )
 
         # Metrics Middleware
-        app.add_middleware(MetricsMiddleware)
+        # app.add_middleware(MetricsMiddleware)
 
         @app.put(
             "/api/v1/chunks/{chunk_id}",
@@ -175,7 +176,8 @@ class DataNodeServer:
         @app.get("/metrics")
         async def metrics():
             """Endpoint de métricas."""
-            return metrics_endpoint()
+            # return metrics_endpoint()
+            return {"message": "Metrics endpoint placeholder"}
 
         return app
 
@@ -238,6 +240,7 @@ def setup_logging():
 def main():
     """Función principal para ejecutar el DataNode."""
     setup_logging()
+    agent.main()
     
     try:
         server = DataNodeServer()

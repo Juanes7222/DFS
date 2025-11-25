@@ -188,9 +188,10 @@ class SystemStats(BaseModel):
 class RegisterRequest(BaseModel):
     node_id: str = Field(..., description="UUID persistente del nodo")
     zerotier_node_id: Optional[str] = Field(None, description="ZeroTier member id (opcional)")
-    zerotier_ip: str = Field(..., description="IP asignada por ZeroTier")
+    zerotier_ip: Optional[str] = Field(None, description="IP asignada por ZeroTier (opcional)")
     listening_ports: Optional[Dict[str,int]] = {}
+    data_port: Optional[int] = Field(None, description="Puerto donde el DataNode sirve chunks (opcional)")
     capacity_gb: Optional[float] = None
     version: Optional[str] = None
-    bootstrap_token: str = Field(..., description="Token de bootstrap para autenticación inicial")
+    bootstrap_token: Optional[str] = Field(None, description="Token de bootstrap (puede ir en body o en header)")
     lease_ttl: Optional[int] = None
