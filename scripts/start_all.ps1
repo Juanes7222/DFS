@@ -408,7 +408,7 @@ try {
 $metadataDir = Initialize-DataDirectories -BaseDir $TempDir -NodeCount $Nodes -Clean $CleanStart
 
 # Configurar variables de entorno para Metadata Service
-$env:DFS_METADATA_HOST = "0.0.0.0"
+$env:DFS_METADATA_HOST = $metadataUrl
 $env:DFS_METADATA_PORT = "$MetadataPort"
 $env:DFS_DB_PATH = Join-Path $metadataDir "dfs_metadata.db"
 $env:CORS_ALLOW_ALL = "true"

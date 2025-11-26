@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Constantes
 METADATA_URL = config.metadata_url
-NODE_ID_FILE = Path("node_id.txt")
+NODE_ID_FILE = Path("./temp/node_id.txt")
 ZEROTIER_NETWORK_ID = config.zerotier_network_id
 BOOTSTRAP_TOKEN = config.bootstrap_token
 MAX_RETRIES = 10
@@ -82,7 +82,7 @@ def get_node_id(port: Optional[int] = None) -> str:
     try:
         # Si se proporciona un puerto, usar un archivo específico por puerto
         if port:
-            node_id_file = Path(f"node_id_{port}.txt")
+            node_id_file = Path(f"./temp/node_id_{port}.txt")
         else:
             node_id_file = NODE_ID_FILE
         

@@ -188,6 +188,8 @@ async def register_node(request: RegisterRequest, http_request: Request, authori
         if request.data_port:
             listening_ports["storage"] = request.data_port
         
+        logger.info("Listening ports for node %s: %s", request.node_id, listening_ports)
+        
         # Validar que zerotier_ip no sea None
         if not request.zerotier_ip:
             logger.error("Registro rechazado: zerotier_ip es requerido para %s", request.node_id)

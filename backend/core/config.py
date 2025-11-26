@@ -1,8 +1,11 @@
 import os
+import secrets
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List
 from dotenv import load_dotenv
+import logging
+logger = logging.getLogger(__name__)
 load_dotenv()
 @dataclass
 class DFSConfig:
@@ -30,7 +33,11 @@ class DFSConfig:
     db_path: Path = Path(os.getenv("DFS_DB_PATH", "/tmp/dfs-metadata.db"))
 
     # Security
-    jwt_secret_key: str = os.getenv("DFS_JWT_SECRET_KEY", "CHANGE-ME-IN-PRODUCTION")
+    jwt_secret_key: str | None = os.getenv("DFS_JWT_SECRET_KEY")
+    if jwt_secret_key is None:
+        jwt_secret_key = secrets.token_hex(32)
+        logger.warning("JWT_SECRET_KEY no está configurado. Se generó una clave temporal.")
+    
     enable_mtls: bool = os.getenv("DFS_ENABLE_MTLS", "false").lower() == "true"
 
     # Monitoring
@@ -46,7 +53,7 @@ class DFSConfig:
     # CORS - Orígenes permitidos
     cors_origins: List[str] = field(default_factory=lambda: os.getenv(
         "CORS_ORIGINS",
-        "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
+        "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173",
     ).split(","))
     
     # Permitir todos los orígenes en desarrollo (usar con cuidado)
@@ -56,11 +63,11 @@ class DFSConfig:
     bootstrap_token = os.getenv("INITIAL_BOOTSTRAP_TOKEN", "")  # lista de tokens válidos (puedes cargar desde archivo/env)
     allow_open_registration = False  # si True permite registro sin token (solo pruebas)
     lease_ttl = 60  # segundos
-    nodes_db_path = "/var/lib/dfs/nodes.db"  # en Windows: "C:\\ProgramData\\dfs\\nodes.db"
+    nodes_db_path = "./temp/nodes.db"  # en Windows: "C:\\ProgramData\\dfs\\nodes.db"
     zerotier_api_token = os.getenv("ZEROTIER_API_TOKEN", None)  # opcional para autorizar members automáticamente
     zerotier_network_id = os.getenv("ZEROTIER_NETWORK_ID", None)
     zerotier_ip_prefix = "100."  # opcional: prefix para validar IPs que vienen por ZeroTier (ej. "100." o "10.147.")
-    replication_factor = 3
+    replication_factor = int(os.getenv("DFS_REPLICATION_FACTOR", "3"))
     data_port = int(os.getenv("DATA_PORT", "5001"))
 
 
