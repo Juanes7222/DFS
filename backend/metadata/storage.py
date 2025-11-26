@@ -463,9 +463,16 @@ class MetadataStorage(MetadataStorageProtocol):
 
 
     async def update_node_heartbeat(
-        self, node_id: str, free_space: int, total_space: int, chunk_ids: List[UUID]
+        self, 
+        node_id: str, 
+        free_space: int, 
+        total_space: int, 
+        chunk_ids: List[UUID],
+        zerotier_ip: Optional[str] = None,
+        zerotier_node_id: Optional[str] = None,
+        url: Optional[str] = None,
     ) -> None:
-        """Actualiza heartbeat de un nodo"""
+        """Actualiza heartbeat de un nodo con información adicional de ZeroTier"""
         async with self.lock:
             now = datetime.now(timezone.utc)
             threshold = now - timedelta(seconds=config.node_timeout)
@@ -477,37 +484,71 @@ class MetadataStorage(MetadataStorageProtocol):
             ).fetchone()
 
             if row:
-                # Actualiza un nodo existente
-                conn.execute(
-                    """
-                    UPDATE nodes 
-                    SET free_space = ?, total_space = ?, chunk_count = ?, 
-                        last_heartbeat = ?, state = ?
-                    WHERE node_id = ?
-                    """,
-                    (
-                        free_space,
-                        total_space,
-                        len(chunk_ids),
-                        now.isoformat(),
-                        NodeState.ACTIVE.value,
-                        node_id,
-                    ),
-                )
+                # Preparar campos para actualización
+                update_fields = [
+                    "free_space = ?",
+                    "total_space = ?",
+                    "chunk_count = ?",
+                    "last_heartbeat = ?",
+                    "state = ?"
+                ]
+                update_values = [
+                    free_space,
+                    total_space,
+                    len(chunk_ids),
+                    now.isoformat(),
+                    NodeState.ACTIVE.value,
+                ]
+                
+                # Agregar campos opcionales si están presentes
+                if zerotier_ip:
+                    update_fields.append("zerotier_ip = ?")
+                    update_values.append(zerotier_ip)
+                    update_fields.append("host = ?")
+                    update_values.append(zerotier_ip)
+                
+                if zerotier_node_id:
+                    update_fields.append("zerotier_node_id = ?")
+                    update_values.append(zerotier_node_id)
+                
+                if url:
+                    # Extraer puerto de la URL si está presente
+                    try:
+                        port_from_url = int(url.split(":")[-1].split("/")[0])
+                        update_fields.append("port = ?")
+                        update_values.append(port_from_url)
+                    except (ValueError, IndexError):
+                        pass
+                
+                update_values.append(node_id)
+                
+                query = f"UPDATE nodes SET {', '.join(update_fields)} WHERE node_id = ?"
+                conn.execute(query, tuple(update_values))
+                
             else:
                 # Inserta un nuevo nodo
-                host, port = self._parse_node_id(node_id)
+                host = zerotier_ip if zerotier_ip else "0.0.0.0"
+                port = 8001  # Puerto por defecto
+                
+                # Intentar extraer puerto de la URL
+                if url:
+                    try:
+                        port = int(url.split(":")[-1].split("/")[0])
+                    except (ValueError, IndexError):
+                        pass
 
                 conn.execute(
                     """
                     INSERT INTO nodes 
-                    (node_id, host, port, free_space, total_space, chunk_count, last_heartbeat, state)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (node_id, host, port, zerotier_ip, zerotier_node_id, free_space, total_space, chunk_count, last_heartbeat, state)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         node_id,
                         host,
                         port,
+                        zerotier_ip,
+                        zerotier_node_id,
                         free_space,
                         total_space,
                         len(chunk_ids),
@@ -523,7 +564,7 @@ class MetadataStorage(MetadataStorageProtocol):
             )
 
             conn.commit()
-            logger.debug(f"Heartbeat actualizado: {node_id}")
+            logger.debug(f"Heartbeat actualizado: {node_id} (ZT IP: {zerotier_ip})")
 
     async def get_node(self, node_id: str) -> Optional[NodeInfo]:
         """Obtiene información de un nodo"""
@@ -644,9 +685,12 @@ class MetadataStorage(MetadataStorageProtocol):
 
     def _row_to_node_info(self, row) -> NodeInfo:
         """Convierte una fila de la BD a NodeInfo"""
+        # Preferir zerotier_ip sobre host si está disponible
+        host = row.get("zerotier_ip") or row["host"]
+        
         return NodeInfo(
             node_id=row["node_id"],
-            host=row["host"],
+            host=host,  # Usar ZeroTier IP si está disponible
             port=row["port"],
             rack=row["rack"],
             free_space=row["free_space"],

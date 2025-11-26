@@ -151,6 +151,49 @@ def get_zerotier_ip() -> Optional[str]:
     return None
 
 
+def get_zerotier_node_id_from_cli() -> Optional[str]:
+    """
+    Obtiene el ZeroTier Node ID del sistema local.
+    
+    Returns:
+        Optional[str]: ZeroTier Node ID o None
+    """
+    try:
+        system = platform.system()
+        
+        if system == "Windows":
+            result = subprocess.run(
+                "zerotier-cli info",
+                capture_output=True,
+                text=True,
+                shell=True
+            )
+        else:
+            result = subprocess.run(
+                ["sudo", "zerotier-cli", "info"],
+                capture_output=True,
+                text=True
+            )
+        
+        if result.returncode != 0:
+            logger.error(f"Error ejecutando zerotier-cli info: {result.stderr}")
+            return None
+        
+        # El formato es: 200 info <node_id> <version> ONLINE
+        parts = result.stdout.strip().split()
+        if len(parts) >= 3 and parts[0] == "200":
+            node_id = parts[2]
+            logger.info(f"ZeroTier Node ID encontrado: {node_id}")
+            return node_id
+        
+        logger.warning("No se pudo parsear el ZeroTier Node ID")
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error en get_zerotier_node_id_from_cli: {e}")
+        return None
+
+
 def get_zerotier_ip_from_cli() -> Optional[str]:
     """
     Obtiene la IP de ZeroTier usando el CLI.

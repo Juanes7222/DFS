@@ -186,17 +186,41 @@ class DataNodeServer:
         logger.info(f"Iniciando DataNode {self.node_id} en puerto {self.port}")
 
         try:
+            # Obtener ZeroTier IP si está disponible
+            zerotier_ip = None
+            zerotier_node_id = None
+            
+            try:
+                from datanode.agent import get_zerotier_ip, get_zerotier_node_id_from_cli
+                zerotier_ip = get_zerotier_ip()
+                if zerotier_ip:
+                    logger.info(f"ZeroTier IP detectada: {zerotier_ip}")
+                    try:
+                        zerotier_node_id = get_zerotier_node_id_from_cli()
+                        if zerotier_node_id:
+                            logger.info(f"ZeroTier Node ID: {zerotier_node_id}")
+                    except Exception as e:
+                        logger.warning(f"No se pudo obtener ZeroTier Node ID: {e}")
+                else:
+                    logger.warning("No se detectó IP de ZeroTier, usando configuración local")
+            except ImportError:
+                logger.warning("Módulo agent no disponible, continuando sin ZeroTier")
+            except Exception as e:
+                logger.warning(f"Error obteniendo ZeroTier info: {e}")
+            
             # Inicializar storage
             self.storage = ChunkStorage(self.storage_path)
             await self.storage.initialize()
             logger.info("Storage inicializado correctamente")
 
-            # Iniciar heartbeat
+            # Iniciar heartbeat con información de ZeroTier
             self.heartbeat_manager = HeartbeatManager(
                 node_id=self.node_id,
                 storage=self.storage,
                 metadata_url=config.metadata_url,
-                port=self.port
+                port=self.port,
+                zerotier_ip=zerotier_ip,
+                zerotier_node_id=zerotier_node_id
             )
             await self.heartbeat_manager.start()
             logger.info("Heartbeat manager iniciado correctamente")
@@ -240,7 +264,6 @@ def setup_logging():
 def main():
     """Función principal para ejecutar el DataNode."""
     setup_logging()
-    agent.main()
     
     try:
         server = DataNodeServer()

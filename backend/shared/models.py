@@ -138,6 +138,9 @@ class HeartbeatRequest(BaseModel):
     free_space: int
     total_space: int
     chunk_ids: List[UUID]
+    url: Optional[str] = None  # URL pública del DataNode
+    zerotier_ip: Optional[str] = None  # IP de ZeroTier
+    zerotier_node_id: Optional[str] = None  # ID del nodo en ZeroTier
 
 
 class LeaseRequest(BaseModel):

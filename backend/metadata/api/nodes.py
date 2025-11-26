@@ -35,15 +35,25 @@ async def node_heartbeat(request: HeartbeatRequest):
     Actualiza el estado del nodo y su inventario de chunks.
     """
     logger.debug(f"Heartbeat: {request.node_id}, chunks={len(request.chunk_ids)}")
+    
+    # Log adicional para depuración de ZeroTier
+    if request.zerotier_ip:
+        logger.info(f"Heartbeat con ZeroTier IP: {request.zerotier_ip} (node: {request.node_id})")
+    if request.url:
+        logger.debug(f"URL pública: {request.url}")
 
     storage = get_storage()
 
     try:
+        # Actualizar heartbeat con información adicional
         await storage.update_node_heartbeat(
             node_id=request.node_id,
             free_space=request.free_space,
             total_space=request.total_space,
             chunk_ids=request.chunk_ids,
+            zerotier_ip=request.zerotier_ip,
+            zerotier_node_id=request.zerotier_node_id,
+            url=request.url,
         )
 
         return {"status": "ok", "node_id": request.node_id}
