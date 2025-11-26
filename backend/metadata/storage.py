@@ -501,13 +501,17 @@ class MetadataStorage(MetadataStorageProtocol):
                 ]
                 
                 # Agregar campos opcionales si están presentes
-                if zerotier_ip:
+                # SIEMPRE actualizar host si hay zerotier_ip válida
+                if zerotier_ip and zerotier_ip.strip() and zerotier_ip != "0.0.0.0":
                     update_fields.append("zerotier_ip = ?")
                     update_values.append(zerotier_ip)
                     update_fields.append("host = ?")
                     update_values.append(zerotier_ip)
+                    logger.info(f"Actualizando host de {node_id} a {zerotier_ip}")
+                else:
+                    logger.debug(f"Heartbeat sin ZeroTier IP válida para {node_id}")
                 
-                if zerotier_node_id:
+                if zerotier_node_id and zerotier_node_id.strip():
                     update_fields.append("zerotier_node_id = ?")
                     update_values.append(zerotier_node_id)
                 

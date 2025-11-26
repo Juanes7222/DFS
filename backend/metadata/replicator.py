@@ -232,6 +232,7 @@ class ReplicationManager(ReplicationProtocol):
 
                 # Subir chunk al nodo destino
                 upload_url = f"http://{target_node.host}:{target_node.port}/api/v1/chunks/{chunk_id}"
+                logger.info(f"Intentando subir chunk a: {upload_url} (node_id: {target_node.node_id})")
                 files = {"file": ("chunk", chunk_data, "application/octet-stream")}
 
                 response = await client.put(upload_url, files=files, timeout=60.0)

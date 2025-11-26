@@ -26,9 +26,23 @@ class DataNodeServer:
 
     def __init__(self, node_id: Optional[str] = None, port: Optional[int] = None):
         self.port = port or config.datanode_port
-        self.node_id = (
-            node_id or f"node-{config.datanode_host}-{self.port}"
-        )
+        
+        # Usar node_id persistente si se proporciona, sino generarlo
+        if node_id:
+            self.node_id = node_id
+        else:
+            # Intentar obtener un node_id persistente del agent
+            try:
+                from datanode.agent import get_node_id
+                self.node_id = get_node_id()
+                logger.info(f"Usando node_id persistente: {self.node_id}")
+            except Exception as e:
+                logger.warning(f"No se pudo obtener node_id persistente: {e}")
+                # Fallback temporal
+                import uuid
+                self.node_id = str(uuid.uuid4())
+                logger.warning(f"Generando node_id temporal: {self.node_id}")
+        
         self.storage_path = config.storage_path / self.node_id
 
         self.storage: Optional[ChunkStorage] = None
