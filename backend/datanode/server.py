@@ -31,16 +31,16 @@ class DataNodeServer:
         if node_id:
             self.node_id = node_id
         else:
-            # Intentar obtener un node_id persistente del agent
+            # Intentar obtener un node_id persistente del agent (usando el puerto para diferenciación)
             try:
                 from datanode.agent import get_node_id
-                self.node_id = get_node_id()
-                logger.info(f"Usando node_id persistente: {self.node_id}")
+                self.node_id = get_node_id(port=self.port)
+                logger.info(f"Usando node_id persistente: {self.node_id} para puerto {self.port}")
             except Exception as e:
                 logger.warning(f"No se pudo obtener node_id persistente: {e}")
-                # Fallback temporal
+                # Fallback temporal con puerto para garantizar unicidad
                 import uuid
-                self.node_id = str(uuid.uuid4())
+                self.node_id = f"{uuid.uuid4()}-{self.port}"
                 logger.warning(f"Generando node_id temporal: {self.node_id}")
         
         self.storage_path = config.storage_path / self.node_id

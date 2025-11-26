@@ -69,25 +69,35 @@ def request_admin_privileges():
     return True
 
 
-def get_node_id() -> str:
+def get_node_id(port: Optional[int] = None) -> str:
     """
     Genera o recupera un node_id persistente.
+    
+    Args:
+        port: Puerto del DataNode (opcional). Si se proporciona, se usa para generar un ID único por nodo.
     
     Returns:
         str: UUID único del nodo
     """
     try:
-        if NODE_ID_FILE.exists():
-            node_id = NODE_ID_FILE.read_text().strip()
+        # Si se proporciona un puerto, usar un archivo específico por puerto
+        if port:
+            node_id_file = Path(f"node_id_{port}.txt")
+        else:
+            node_id_file = NODE_ID_FILE
+        
+        if node_id_file.exists():
+            node_id = node_id_file.read_text().strip()
             if node_id and len(node_id) == 36:  # Validar formato UUID
-                logger.info(f"Node ID recuperado: {node_id}")
+                logger.info(f"Node ID recuperado: {node_id} (puerto: {port or 'default'})")
                 return node_id
             else:
                 logger.warning("Node ID inválido encontrado, generando uno nuevo")
         
         node_id = str(uuid.uuid4())
-        NODE_ID_FILE.write_text(node_id)
-        logger.info(f"Nuevo Node ID generado: {node_id}")
+        node_id_file.write_text(node_id)
+        logger.info(f"Nuevo Node ID generado: {node_id} (puerto: {port or 'default'})")
+        return node_id
         return node_id
         
     except Exception as e:

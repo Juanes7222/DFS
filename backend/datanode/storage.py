@@ -150,7 +150,7 @@ class ChunkStorage(ChunkStorageProtocol):
                     timeout=60.0,
                 )
 
-                if response.status_code == 200:
+                if response.status_code in (200, 201):
                     result = response.json()
                     downstream_nodes = result.get("nodes", [])
                     replicated_nodes.extend(downstream_nodes)

@@ -147,7 +147,9 @@ class HeartbeatManager:
             
             logger.debug(f"Enviando heartbeat a: {url}")
             logger.debug(f"URL pública: {public_url}")
-            logger.debug(f"Chunks almacenados: {len(chunk_ids)}")
+            logger.info(f"Reportando {len(chunk_ids)} chunks almacenados en heartbeat")
+            if len(chunk_ids) > 0:
+                logger.debug(f"Chunks: {[str(c) for c in chunk_ids[:5]]}{'...' if len(chunk_ids) > 5 else ''}")
 
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(url, json=payload)
@@ -193,19 +195,23 @@ class HeartbeatManager:
         chunk_ids = []
         
         if not self.storage.storage_path.exists():
-            logger.debug(f"Directorio de storage no existe: {self.storage.storage_path}")
+            logger.warning(f"Directorio de storage no existe: {self.storage.storage_path}")
             return chunk_ids
 
         try:
-            for chunk_file in self.storage.storage_path.glob("*.chunk"):
+            chunk_files = list(self.storage.storage_path.glob("*.chunk"))
+            logger.debug(f"Buscando chunks en: {self.storage.storage_path}")
+            logger.debug(f"Archivos .chunk encontrados: {len(chunk_files)}")
+            
+            for chunk_file in chunk_files:
                 try:
                     chunk_id = UUID(chunk_file.stem)
                     chunk_ids.append(chunk_id)
                 except ValueError:
-                    logger.debug(f"Archivo con nombre inválido ignorado: {chunk_file.name}")
+                    logger.warning(f"Archivo con nombre inválido ignorado: {chunk_file.name}")
                     continue
                     
-            logger.debug(f"Encontrados {len(chunk_ids)} chunks en {self.storage.storage_path}")
+            logger.info(f"Encontrados {len(chunk_ids)} chunks válidos en {self.storage.storage_path}")
             
         except Exception as e:
             logger.error(f"Error escaneando chunks: {e}", exc_info=True)

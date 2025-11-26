@@ -477,6 +477,10 @@ class MetadataStorage(MetadataStorageProtocol):
             now = datetime.now(timezone.utc)
             threshold = now - timedelta(seconds=config.node_timeout)
 
+            logger.info(f"Heartbeat de {node_id}: reportando {len(chunk_ids)} chunks")
+            if len(chunk_ids) > 0:
+                logger.debug(f"Chunks reportados: {[str(c) for c in chunk_ids[:5]]}{'...' if len(chunk_ids) > 5 else ''}")
+
             conn = self._conn
             # Verifica si el nodo existe
             row = conn.execute(
@@ -567,8 +571,72 @@ class MetadataStorage(MetadataStorageProtocol):
                 (NodeState.INACTIVE.value, threshold.isoformat()),
             )
 
+            # Actualizar réplicas basadas en los chunks reportados
+            if chunk_ids:
+                await self._update_replicas_from_heartbeat(node_id, chunk_ids, url or f"http://{zerotier_ip or '0.0.0.0'}:{8001}")
+
             conn.commit()
             logger.debug(f"Heartbeat actualizado: {node_id} (ZT IP: {zerotier_ip})")
+    
+    async def _update_replicas_from_heartbeat(self, node_id: str, chunk_ids: List[UUID], node_url: str) -> None:
+        """
+        Actualiza las réplicas de los chunks basándose en lo reportado por el heartbeat.
+        Marca las réplicas como committed si el nodo reporta tener el chunk.
+        """
+        conn = self._conn
+        
+        # Obtener todos los archivos que no están eliminados
+        rows = conn.execute(
+            "SELECT file_id, chunks_json FROM files WHERE is_deleted = 0"
+        ).fetchall()
+        
+        chunk_ids_str = {str(c) for c in chunk_ids}
+        updated_files = 0
+        
+        for row in rows:
+            file_id = row["file_id"]
+            chunks_data = json.loads(row["chunks_json"])
+            file_modified = False
+            
+            for chunk in chunks_data:
+                chunk_id = chunk.get("chunk_id")
+                
+                # Si este nodo reporta tener este chunk
+                if chunk_id in chunk_ids_str:
+                    replicas = chunk.get("replicas", [])
+                    
+                    # Buscar si ya existe una réplica para este nodo
+                    replica_exists = False
+                    for replica in replicas:
+                        if replica.get("node_id") == node_id:
+                            # Actualizar réplica existente
+                            replica["state"] = "committed"
+                            replica["url"] = node_url
+                            replica_exists = True
+                            file_modified = True
+                            break
+                    
+                    # Si no existe, agregarla
+                    if not replica_exists:
+                        replicas.append({
+                            "node_id": node_id,
+                            "url": node_url,
+                            "state": "committed",
+                            "checksum_verified": False
+                        })
+                        chunk["replicas"] = replicas
+                        file_modified = True
+            
+            # Actualizar el archivo si se modificó
+            if file_modified:
+                conn.execute(
+                    "UPDATE files SET chunks_json = ?, modified_at = ? WHERE file_id = ?",
+                    (json.dumps(chunks_data), datetime.now(timezone.utc).isoformat(), file_id)
+                )
+                updated_files += 1
+        
+        if updated_files > 0:
+            logger.info(f"Actualizadas réplicas para {updated_files} archivos desde heartbeat de {node_id}")
 
     async def get_node(self, node_id: str) -> Optional[NodeInfo]:
         """Obtiene información de un nodo"""
