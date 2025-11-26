@@ -686,6 +686,7 @@ class MetadataStorage(MetadataStorageProtocol):
     def _row_to_node_info(self, row) -> NodeInfo:
         """Convierte una fila de la BD a NodeInfo"""
         # Preferir zerotier_ip sobre host si está disponible
+        row = dict(row)
         host = row.get("zerotier_ip") or row["host"]
         
         return NodeInfo(
