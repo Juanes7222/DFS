@@ -66,7 +66,10 @@ class DFSConfig:
 
     @property
     def metadata_url(self) -> str:
-        return f"http://{self.metadata_host}:{self.metadata_port}"
+        if os.getenv("DEBUG_MODE", "false").lower() == "true":
+            return f"http://{self.metadata_host}:{self.metadata_port}"
+        else:
+            return self.metadata_host
 
     @property
     def datanode_url(self) -> str:

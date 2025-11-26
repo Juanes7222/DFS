@@ -285,6 +285,7 @@ def register_to_master(node_id: str, zt_ip: Optional[str], data_port: int) -> bo
         bool: True si el registro fue exitoso
     """
     url = f"{METADATA_URL}/api/v1/nodes/register"  # Cambiar la ruta también
+    print(METADATA_URL)
     
     headers = {
         "Content-Type": "application/json",

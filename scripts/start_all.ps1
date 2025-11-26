@@ -13,6 +13,12 @@
 .PARAMETER MetadataPort
     Puerto para el Metadata Service (default: 8000)
 
+.PARAMETER MetadataHost
+    Host para el Metadata Service (default: localhost)
+
+.PARAMETER WithoutMetadata
+    Si se necesita omitir el inicio del Metadata Service
+
 .PARAMETER BaseDataNodePort
     Puerto base para los DataNodes (default: 8001)
 
@@ -28,7 +34,9 @@
 param(
     [int]$Nodes = 3,
     [int]$MetadataPort = 8000,
+    [string]$MetadataHost = "localhost",
     [int]$BaseDataNodePort = 8001,
+    [switch]$WithoutMetadata,
     [switch]$CleanStart
 )
 
@@ -343,36 +351,40 @@ $env:DFS_DB_PATH = Join-Path $metadataDir "dfs_metadata.db"
 $env:CORS_ALLOW_ALL = "true"
 
 # Iniciar Metadata Service
-Write-Section "Iniciando Metadata Service"
+if (-not $WithoutMetadata) {
+    Write-Section "Iniciando Metadata Service"
 
-$metadataLog = Join-Path $tempDir "dfs-metadata.log"
-$metadataErrLog = Join-Path $tempDir "dfs-metadata-errors.log"
+    $metadataLog = Join-Path $tempDir "dfs-metadata.log"
+    $metadataErrLog = Join-Path $tempDir "dfs-metadata-errors.log"
 
-try {
-    $metadataJob = Start-Job -ScriptBlock {
-        param($pythonPath, $serverScript, $workDir, $logFile, $errFile)
-        Set-Location $workDir
-        & $pythonPath $serverScript *> $logFile 2> $errFile
-    } -ArgumentList $pythonCmd, (Join-Path $backendRoot "metadata\server.py"), $backendRoot, $metadataLog, $metadataErrLog
+    try {
+        $metadataJob = Start-Job -ScriptBlock {
+            param($pythonPath, $serverScript, $workDir, $logFile, $errFile)
+            Set-Location $workDir
+            & $pythonPath $serverScript *> $logFile 2> $errFile
+        } -ArgumentList $pythonCmd, (Join-Path $backendRoot "metadata\server.py"), $backendRoot, $metadataLog, $metadataErrLog
 
-    Write-Success "Metadata Service iniciado (Job ID: $($metadataJob.Id))"
-    $global:METADATA_JOB = $metadataJob
-} catch {
-    Write-Failure "Error iniciando Metadata Service: $_"
-    exit 1
-}
+        Write-Success "Metadata Service iniciado (Job ID: $($metadataJob.Id))"
+        $global:METADATA_JOB = $metadataJob
+    } catch {
+        Write-Failure "Error iniciando Metadata Service: $_"
+        exit 1
+    }
 
-# Esperar a que el Metadata Service esté listo
-if (-not (Wait-ForPort -Port $MetadataPort -JobId $metadataJob.Id)) {
-    Show-Logs -LogPath $metadataErrLog
-    Get-Job | Stop-Job | Remove-Job
-    exit 1
-}
+    # Esperar a que el Metadata Service esté listo
+    if (-not (Wait-ForPort -Port $MetadataPort -JobId $metadataJob.Id)) {
+        Show-Logs -LogPath $metadataErrLog
+        Get-Job | Stop-Job | Remove-Job
+        exit 1
+    }
 
-if (-not (Test-MetadataHealth -Port $MetadataPort)) {
-    Show-Logs -LogPath $metadataErrLog
-    Get-Job | Stop-Job | Remove-Job
-    exit 1
+    if (-not (Test-MetadataHealth -Port $MetadataPort)) {
+        Show-Logs -LogPath $metadataErrLog
+        Get-Job | Stop-Job | Remove-Job
+        exit 1
+    }
+} else {
+    Write-Section "Omitiendo inicio de Metadata Service"
 }
 
 # Iniciar DataNodes
@@ -390,7 +402,7 @@ for ($i = 1; $i -le $Nodes; $i++) {
     Write-Info "Iniciando DataNode $i en puerto $port..."
 
     $envVars = @{
-        "DFS_METADATA_HOST" = "localhost"
+        "DFS_METADATA_HOST" = "$MetadataHost"
         "DFS_METADATA_PORT" = "$MetadataPort"
         "DFS_DATANODE_HOST" = "0.0.0.0"
         "DFS_DATANODE_PORT" = "$port"
