@@ -11,10 +11,10 @@
     Número de DataNodes a iniciar (default: 3)
 
 .PARAMETER MetadataPort
-    Puerto para el Metadata Service (default: 8000)
+    Puerto para el Metadata Service (default: 8000, se ignora si MetadataHost incluye protocolo)
 
 .PARAMETER MetadataHost
-    Host para el Metadata Service (default: localhost)
+    Host para el Metadata Service (default: localhost). Puede incluir protocolo (http:// o https://)
 
 .PARAMETER WithoutMetadata
     Si se necesita omitir el inicio del Metadata Service
@@ -25,10 +25,15 @@
 .PARAMETER CleanStart
     Si está presente, limpia los datos existentes antes de iniciar
 
+.PARAMETER TempDir
+    Directorio temporal para almacenar datos y logs (default: directorio temporal del sistema)
+
 .EXAMPLE
     .\start-dfs.ps1
     .\start-dfs.ps1 -Nodes 5
     .\start-dfs.ps1 -Nodes 3 -CleanStart
+    .\start-dfs.ps1 -TempDir "C:\DFS-Data"
+    .\start-dfs.ps1 -WithoutMetadata -MetadataHost "https://dfs-0z6t.onrender.com"
 #>
 
 param(
@@ -37,7 +42,8 @@ param(
     [string]$MetadataHost = "localhost",
     [int]$BaseDataNodePort = 8001,
     [switch]$WithoutMetadata,
-    [switch]$CleanStart
+    [switch]$CleanStart,
+    [string]$TempDir = ""
 )
 
 $ErrorActionPreference = "Continue"
@@ -50,6 +56,52 @@ $MAX_PORT_RETRIES = 30
 $MAX_HEALTH_RETRIES = 10
 $DATANODE_STARTUP_RETRIES = 10
 
+# Determinar directorio temporal si no se especificó
+if ([string]::IsNullOrWhiteSpace($TempDir)) {
+    if ($IsWindows -or $env:OS -match "Windows") {
+        $TempDir = $env:TEMP
+    } else {
+        $TempDir = "/tmp"
+    }
+    $usingDefaultTemp = $true
+} else {
+    # Convertir a ruta absoluta
+    $TempDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($TempDir)
+    $usingDefaultTemp = $false
+    
+    # Crear el directorio si no existe
+    if (-not (Test-Path $TempDir)) {
+        try {
+            New-Item -Path $TempDir -ItemType Directory -Force | Out-Null
+            Write-Host "Directorio creado: $TempDir" -ForegroundColor Green
+        } catch {
+            Write-Host "Error creando directorio $TempDir : $_" -ForegroundColor Red
+            exit 1
+        }
+    }
+}
+
+# Parsear MetadataHost para determinar URL completa
+function Get-MetadataUrl {
+    param([string]$MetadataServiceHost, [int]$Port)
+    
+    # Si ya incluye protocolo, usarlo directamente
+    if ($MetadataServiceHost -match '^https?://') {
+        return $MetadataServiceHost
+    }
+    
+    # Si es localhost o IP, usar http con el puerto especificado
+    if ($MetadataServiceHost -eq "localhost" -or $MetadataServiceHost -match '^\d+\.\d+\.\d+\.\d+$') {
+        return "http://${MetadataServiceHost}:${Port}"
+    }
+    
+    # Para dominios externos, asumir HTTPS sin puerto
+    return "https://${MetadataServiceHost}"
+}
+
+$metadataUrl = Get-MetadataUrl -MetadataServiceHost $MetadataHost -Port $MetadataPort
+Write-Host "Metadata URL configurada: $metadataUrl" -ForegroundColor Gray
+
 # Colores para output
 function Write-Section { param([string]$Message) Write-Host "`n=== $Message ===" -ForegroundColor Cyan }
 function Write-Success { param([string]$Message) Write-Host "$Message" -ForegroundColor Green }
@@ -59,8 +111,16 @@ function Write-Failure { param([string]$Message) Write-Host "$Message" -Foregrou
 
 Write-Section "Iniciando Sistema DFS"
 Write-Info "DataNodes a iniciar: $Nodes"
-Write-Info "Puerto Metadata: $MetadataPort"
+if (-not $WithoutMetadata) {
+    Write-Info "Puerto Metadata: $MetadataPort"
+}
+Write-Info "URL Metadata: $metadataUrl"
 Write-Info "Puertos DataNode: $BaseDataNodePort-$($BaseDataNodePort + $Nodes - 1)"
+if ($usingDefaultTemp) {
+    Write-Info "Directorio datos/logs: $TempDir (por defecto)"
+} else {
+    Write-Success "Directorio datos/logs: $TempDir (personalizado)"
+}
 
 # Obtener directorios del proyecto
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -105,7 +165,7 @@ function Get-PythonCommand {
 
     # Buscar en ubicaciones comunes de Windows
     if ($IsWindows -or $env:OS -match "Windows") {
-        $pythonVersions = @("312", "311", "310", "39", "38")
+        $pythonVersions = @("313", "312", "311", "310", "39", "38")
         $basePaths = @($env:LOCALAPPDATA, $env:ProgramFiles, "${env:ProgramFiles(x86)}")
         
         foreach ($base in $basePaths) {
@@ -228,15 +288,15 @@ function Test-MetadataHealth {
     .SYNOPSIS
         Verifica el health endpoint del Metadata Service
     #>
-    param([int]$Port, [int]$MaxRetries = 10)
+    param([string]$BaseUrl, [int]$MaxRetries = 10)
     
-    Write-Info "Verificando health endpoint..."
+    Write-Info "Verificando health endpoint en $BaseUrl/health..."
     $retries = 0
     
     while ($retries -lt $MaxRetries) {
         try {
-            $response = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/v1/health" `
-                                         -TimeoutSec 3 `
+            $response = Invoke-RestMethod -Uri "$BaseUrl/health" `
+                                         -TimeoutSec 5 `
                                          -ErrorAction Stop
             Write-Success "Metadata Service responde: $($response.status)"
             return $true
@@ -259,14 +319,15 @@ function Initialize-DataDirectories {
     .SYNOPSIS
         Crea o limpia directorios de datos
     #>
-    param([string]$TempDir, [int]$NodeCount, [bool]$Clean)
+    param([string]$BaseDir, [int]$NodeCount, [bool]$Clean)
     
     Write-Section "Preparando directorios de datos"
+    Write-Info "Directorio base: $BaseDir"
     
-    $metadataDir = Join-Path $TempDir "dfs-metadata"
+    $metadataDir = Join-Path $BaseDir "dfs-metadata"
     
     if ($Clean -and (Test-Path $metadataDir)) {
-        Write-Warning "Limpiando datos existentes..."
+        Write-Warning "Limpiando datos existentes del metadata..."
         Remove-Item -Path $metadataDir -Recurse -Force -ErrorAction SilentlyContinue
     }
     
@@ -278,9 +339,10 @@ function Initialize-DataDirectories {
     }
     
     for ($i = 1; $i -le $NodeCount; $i++) {
-        $nodeDir = Join-Path $TempDir "dfs-data-node$i"
+        $nodeDir = Join-Path $BaseDir "dfs-data-node$i"
         
         if ($Clean -and (Test-Path $nodeDir)) {
+            Write-Warning "Limpiando datos existentes del DataNode $i..."
             Remove-Item -Path $nodeDir -Recurse -Force -ErrorAction SilentlyContinue
         }
         
@@ -300,11 +362,13 @@ function Show-Logs {
     .SYNOPSIS
         Muestra las últimas líneas de un archivo de log
     #>
-    param([string]$LogPath, [int]$Lines = 20)
+    param([string]$LogPath, [int]$Lines = 30)
     
     if (Test-Path $LogPath) {
         Write-Host "`nÚltimas $Lines líneas de $LogPath :" -ForegroundColor Yellow
         Get-Content $LogPath -Tail $Lines | ForEach-Object { Write-Host "  $_" }
+    } else {
+        Write-Host "`nArchivo de log no encontrado: $LogPath" -ForegroundColor Red
     }
 }
 
@@ -341,8 +405,7 @@ try {
 }
 
 # Preparar directorios
-$tempDir = if ($IsWindows -or $env:OS -match "Windows") { $env:TEMP } else { "/tmp" }
-$metadataDir = Initialize-DataDirectories -TempDir $tempDir -NodeCount $Nodes -Clean $CleanStart
+$metadataDir = Initialize-DataDirectories -BaseDir $TempDir -NodeCount $Nodes -Clean $CleanStart
 
 # Configurar variables de entorno para Metadata Service
 $env:DFS_METADATA_HOST = "0.0.0.0"
@@ -354,15 +417,15 @@ $env:CORS_ALLOW_ALL = "true"
 if (-not $WithoutMetadata) {
     Write-Section "Iniciando Metadata Service"
 
-    $metadataLog = Join-Path $tempDir "dfs-metadata.log"
-    $metadataErrLog = Join-Path $tempDir "dfs-metadata-errors.log"
+    $metadataLog = Join-Path $TempDir "dfs-metadata.log"
+    $metadataErrLog = Join-Path $TempDir "dfs-metadata-errors.log"
 
     try {
         $metadataJob = Start-Job -ScriptBlock {
-            param($pythonPath, $serverScript, $workDir, $logFile, $errFile)
+            param($pythonPath, $workDir, $logFile, $errFile)
             Set-Location $workDir
-            & $pythonPath $serverScript *> $logFile 2> $errFile
-        } -ArgumentList $pythonCmd, (Join-Path $backendRoot "metadata\server.py"), $backendRoot, $metadataLog, $metadataErrLog
+            & $pythonPath -m metadata.server *> $logFile 2> $errFile
+        } -ArgumentList $pythonCmd, $backendRoot, $metadataLog, $metadataErrLog
 
         Write-Success "Metadata Service iniciado (Job ID: $($metadataJob.Id))"
         $global:METADATA_JOB = $metadataJob
@@ -378,13 +441,20 @@ if (-not $WithoutMetadata) {
         exit 1
     }
 
-    if (-not (Test-MetadataHealth -Port $MetadataPort)) {
+    if (-not (Test-MetadataHealth -BaseUrl "http://127.0.0.1:$MetadataPort")) {
         Show-Logs -LogPath $metadataErrLog
         Get-Job | Stop-Job | Remove-Job
         exit 1
     }
 } else {
     Write-Section "Omitiendo inicio de Metadata Service"
+    Write-Warning "Conectando al Metadata Service en: $metadataUrl"
+    
+    # Verificar que el metadata service esté disponible
+    if (-not (Test-MetadataHealth -BaseUrl $metadataUrl)) {
+        Write-Failure "No se puede conectar al Metadata Service"
+        exit 1
+    }
 }
 
 # Iniciar DataNodes
@@ -394,16 +464,16 @@ $global:DATANODE_JOBS = @()
 
 for ($i = 1; $i -le $Nodes; $i++) {
     $port = $BaseDataNodePort + ($i - 1)
-    $storagePath = Join-Path $tempDir "dfs-data-node$i"
-    $logFile = Join-Path $tempDir "dfs-datanode$i.log"
-    $errFile = Join-Path $tempDir "dfs-datanode$i-errors.log"
+    $storagePath = Join-Path $TempDir "dfs-data-node$i"
+    $logFile = Join-Path $TempDir "dfs-datanode$i.log"
+    $errFile = Join-Path $TempDir "dfs-datanode$i-errors.log"
     $nodeId = "node-localhost-$port"
 
     Write-Info "Iniciando DataNode $i en puerto $port..."
 
     $envVars = @{
-        "DFS_METADATA_HOST" = "$MetadataHost"
-        "DFS_METADATA_PORT" = "$MetadataPort"
+        "METADATA_URL" = $metadataUrl
+        "DATA_PORT" = "$port"
         "DFS_DATANODE_HOST" = "0.0.0.0"
         "DFS_DATANODE_PORT" = "$port"
         "DFS_STORAGE_PATH" = $storagePath
@@ -438,7 +508,8 @@ for ($i = 1; $i -le $Nodes; $i++) {
     }
     
     if (-not $ready) {
-        Write-Warning "DataNode $i puede no estar listo (revisa: $errFile)"
+        Write-Warning "DataNode $i puede no estar listo"
+        Show-Logs -LogPath $errFile -Lines 10
     }
 }
 
@@ -446,26 +517,32 @@ for ($i = 1; $i -le $Nodes; $i++) {
 Write-Section "Sistema DFS iniciado correctamente"
 
 Write-Host "`nServicios en ejecución:" -ForegroundColor Green
-Write-Host "  Metadata Service: http://127.0.0.1:$MetadataPort"
+Write-Host "  Metadata Service: $metadataUrl"
 
 for ($i = 1; $i -le $Nodes; $i++) {
     $port = $BaseDataNodePort + ($i - 1)
     Write-Host "  DataNode $i       : http://127.0.0.1:$port"
 }
 
+Write-Host "`nDirectorio de datos:" -ForegroundColor Cyan
+Write-Host "  $TempDir"
+
 Write-Host "`nArchivos de log:" -ForegroundColor Cyan
-Write-Host "  Metadata        : $metadataLog"
-Write-Host "  Metadata Errors : $metadataErrLog"
+if (-not $WithoutMetadata) {
+    Write-Host "  Metadata        : $metadataLog"
+    Write-Host "  Metadata Errors : $metadataErrLog"
+}
 
 for ($i = 1; $i -le $Nodes; $i++) {
-    $logFile = Join-Path $tempDir "dfs-datanode$i.log"
-    $errFile = Join-Path $tempDir "dfs-datanode$i-errors.log"
+    $logFile = Join-Path $TempDir "dfs-datanode$i.log"
+    $errFile = Join-Path $TempDir "dfs-datanode$i-errors.log"
     Write-Host "  DataNode $i      : $logFile"
     Write-Host "  DataNode $i Err  : $errFile"
 }
 
 Write-Host "`nComandos útiles:" -ForegroundColor Yellow
 Write-Host "  Ver estado    : Get-Job"
-Write-Host "  Ver logs      : Get-Content $metadataLog -Wait"
+Write-Host "  Ver logs DN1  : Get-Content `"$(Join-Path $TempDir "dfs-datanode1.log")`" -Wait"
+Write-Host "  Ver errores   : Get-Content `"$(Join-Path $TempDir "dfs-datanode1-errors.log")`" -Wait"
 Write-Host "  Detener todo  : Get-Job | Stop-Job | Remove-Job"
 Write-Host ""
