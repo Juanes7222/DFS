@@ -538,12 +538,13 @@ class PostgresMetadataStorage(MetadataStorageBase):
                     threshold,
                 )
 
-                if chunk_ids:
-                    await self._update_replicas_from_heartbeat(
-                        node_id,
-                        chunk_ids,
-                        url or f"http://{zerotier_ip or '0.0.0.0'}:{8001}",
-                    )
+                # IMPORTANTE: Sincronizar réplicas SIEMPRE, incluso con chunk_ids vacío
+                # Esto permite eliminar réplicas cuando un nodo reporta 0 chunks
+                await self._update_replicas_from_heartbeat(
+                    node_id,
+                    chunk_ids,
+                    url or f"http://{zerotier_ip or '0.0.0.0'}:{8001}",
+                )
 
             logger.debug(f"Heartbeat actualizado: {node_id} (ZT IP: {zerotier_ip})")
 
@@ -620,6 +621,12 @@ class PostgresMetadataStorage(MetadataStorageBase):
                     f"{updated_files} archivos actualizados, "
                     f"+{replicas_added} réplicas agregadas, "
                     f"-{replicas_removed} réplicas eliminadas"
+                )
+            
+            if replicas_removed > 0:
+                logger.warning(
+                    f"⚠️ Nodo {node_id} perdió {replicas_removed} réplicas "
+                    f"(reportó {len(chunk_ids)} chunks). Re-replicación activada."
                 )
 
     async def get_node(self, node_id: str) -> Optional[NodeInfo]:

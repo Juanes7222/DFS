@@ -101,7 +101,7 @@ class ReplicationManager(ReplicationProtocol):
         """
         Verifica el estado de replicación y orquesta re-replicación si es necesario.
         """
-        logger.debug("Verificando estado de replicación...")
+        logger.info("Verificando estado de replicación...")
 
         try:
             # Obtener todos los archivos
@@ -111,7 +111,7 @@ class ReplicationManager(ReplicationProtocol):
             active_nodes = await self.storage.get_active_nodes()
             active_node_ids = {node.node_id for node in active_nodes}
 
-            logger.debug(f"Archivos: {len(files)}, Nodos activos: {len(active_nodes)}")
+            logger.info(f"Archivos: {len(files)}, Nodos activos: {len(active_nodes)}")
 
             # Encontrar chunks que necesitan replicación
             chunks_to_replicate = await self._find_chunks_needing_replication(
@@ -119,12 +119,12 @@ class ReplicationManager(ReplicationProtocol):
             )
 
             if chunks_to_replicate:
-                logger.info(
+                logger.warning(
                     f"Encontrados {len(chunks_to_replicate)} chunks que necesitan replicación"
                 )
                 await self._replicate_chunks(chunks_to_replicate, active_nodes)
             else:
-                logger.debug("No se encontraron chunks que necesiten replicación")
+                logger.info("No se encontraron chunks que necesiten replicación")
 
         except Exception as e:
             logger.error(f"Error verificando replicación: {e}")
@@ -137,9 +137,12 @@ class ReplicationManager(ReplicationProtocol):
         Si enable_rebalancing=True, también encuentra chunks mal distribuidos.
         """
         chunks_to_replicate = []
+        total_chunks = 0
 
         for file_metadata in files:
             for chunk in file_metadata.chunks:
+                total_chunks += 1
+                
                 # Contar réplicas saludables
                 healthy_replicas = [
                     r
@@ -166,11 +169,10 @@ class ReplicationManager(ReplicationProtocol):
                     )
 
                     logger.warning(
-                        f"Chunk {chunk.chunk_id} tiene {current_replicas} réplicas "
-                        f"(esperadas: {needed_replicas})"
+                        f"Chunk {chunk.chunk_id} ({file_metadata.path}) tiene "
+                        f"{current_replicas}/{needed_replicas} réplicas"
                     )
                 
-                # Caso 2: Rebalanceo (solo si está habilitado)
                 elif self.enable_rebalancing and current_replicas == needed_replicas:
                     # Verificar si los chunks están bien distribuidos
                     # Por ejemplo: si hay 5 nodos pero las réplicas están solo en 3 nodos antiguos
@@ -179,11 +181,13 @@ class ReplicationManager(ReplicationProtocol):
                         # Solo rebalancear si la distribución es muy desigual
                         nodes_with_replicas = {r.node_id for r in healthy_replicas}
                         
-                        # Opcionalmente: agregar lógica para detectar desbalanceo
                         # Por ahora, NO se rebalancea automáticamente
-                        # Para activar: descomentar y ajustar la lógica
                         pass
 
+        logger.info(
+            f"Total chunks analizados: {total_chunks}, "
+            f"Sub-replicados: {len(chunks_to_replicate)}"
+        )
         return chunks_to_replicate
 
     async def _replicate_chunks(
