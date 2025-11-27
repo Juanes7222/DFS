@@ -20,12 +20,12 @@ from shared.models import (
     NodeState,
     ReplicaInfo,
 )
-from shared.protocols import MetadataStorageProtocol
+from shared.protocols import MetadataStorageBase
 
 logger = logging.getLogger(__name__)
 
 
-class MetadataStorage(MetadataStorageProtocol):
+class SQLiteMetadataStorage(MetadataStorageBase):
     """
     Storage backend para metadata usando SQLite.
     """

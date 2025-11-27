@@ -7,12 +7,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import config
-from metadata.storage import MetadataStorage
+from shared.protocols import MetadataStorageBase
 from metadata.replicator import ReplicationManager
 from metadata.leases import LeaseManager
 from metadata import context
 from metadata.api import file_router, node_router, lease_router, system_router
 from monitoring.metrics import MetricsMiddleware
+from metadata.init_storage import create_metadata_storage
 
 # Configura logging
 logging.basicConfig(
@@ -26,7 +27,7 @@ class ServiceManager:
     """Servicio principal de metadatos del DFS. Gestor centralizado de servicios del Metadata Service"""
 
     def __init__(self):
-        self.storage: Optional[MetadataStorage] = None
+        self.storage: Optional[MetadataStorageBase] = None
         self.replicator: Optional[ReplicationManager] = None
         self.lease_manager: Optional[LeaseManager] = None
         self.metrics_task: Optional[asyncio.Task] = None
@@ -37,7 +38,7 @@ class ServiceManager:
 
         try:
             # Inicializar storage
-            self.storage = MetadataStorage()
+            self.storage = create_metadata_storage()
             await self.storage.initialize()
             logger.info("Storage inicializado correctamente")
 

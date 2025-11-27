@@ -5,17 +5,17 @@ Este módulo mantiene referencias globales a los servicios inicializados
 
 from typing import Optional
 
-from metadata.storage import MetadataStorage
+from shared.protocols import MetadataStorageBase
 from metadata.replicator import ReplicationManager
 from metadata.leases import LeaseManager
 
 # Variables globales para servicios
-storage: Optional[MetadataStorage] = None
+storage: Optional[MetadataStorageBase] = None
 replicator: Optional[ReplicationManager] = None
 lease_manager: Optional[LeaseManager] = None
 
 
-def set_storage(instance: Optional[MetadataStorage]) -> None:
+def set_storage(instance: Optional[MetadataStorageBase]) -> None:
     """Establece la instancia de storage"""
     global storage
     storage = instance
@@ -33,7 +33,7 @@ def set_lease_manager(instance: Optional[LeaseManager]) -> None:
     lease_manager = instance
 
 
-def get_storage() -> Optional[MetadataStorage]:
+def get_storage() -> Optional[MetadataStorageBase]:
     """Obtiene la instancia de storage"""
     return storage
 

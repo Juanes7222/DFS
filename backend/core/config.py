@@ -72,7 +72,9 @@ class DFSConfig:
     zerotier_ip_prefix = "100."  # opcional: prefix para validar IPs que vienen por ZeroTier (ej. "100." o "10.147.")
     replication_factor = int(os.getenv("DFS_REPLICATION_FACTOR", "3"))
     data_port = int(os.getenv("DATA_PORT", "5001"))
-
+    
+    backend_storage_type: str = os.getenv("BACKEND_STORAGE_TYPE", "sqlite").lower()  # "sqlite" o "postgres"
+    postgres_url: str = os.getenv("POSTGRES_URL", "postgresql://user:password@localhost:5432/dfs_metadata")
 
     @property
     def metadata_url(self) -> str:
