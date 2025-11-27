@@ -98,7 +98,6 @@ def get_node_id(port: Optional[int] = None) -> str:
         node_id_file.write_text(node_id)
         logger.info(f"Nuevo Node ID generado: {node_id} (puerto: {port or 'default'})")
         return node_id
-        return node_id
         
     except Exception as e:
         logger.error(f"Error manejando node_id: {e}")

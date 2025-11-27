@@ -23,6 +23,9 @@ class DFSConfig:
     # Configuración de Chunk
     chunk_size: int = int(os.getenv("DFS_CHUNK_SIZE", "67108864"))  # 64MB
     replication_factor: int = int(os.getenv("DFS_REPLICATION_FACTOR", "3"))
+    
+    # Replicación
+    enable_rebalancing: bool = os.getenv("DFS_ENABLE_REBALANCING", "false").lower() == "true"
 
     # Timeouts
     client_timeout: float = float(os.getenv("DFS_CLIENT_TIMEOUT", "30.0"))

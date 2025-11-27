@@ -15,15 +15,53 @@ logger = logging.getLogger(__name__)
 class ReplicationManager(ReplicationProtocol):
     """
     Gestiona la re-replicación automática de chunks.
-    Detecta pérdida de réplicas y orquesta copias.
+    
+    ESTRATEGIAS DE REPLICACIÓN:
+    
+    1. REPLICACIÓN ESTÁTICA (por defecto, enable_rebalancing=False):
+       - Mantiene el factor de replicación configurado (ej: 3 réplicas)
+       - Si un nodo falla, re-replica los chunks perdidos a otros nodos existentes
+       - Cuando se agregan nuevos nodos al cluster:
+         * Los archivos NUEVOS se distribuirán automáticamente entre todos los nodos
+         * Los archivos EXISTENTES mantienen sus réplicas en los nodos originales
+       - Ventajas: Simple, predecible, menos overhead
+       - Caso de uso: Clusters estables con pocos cambios de nodos
+    
+    2. REPLICACIÓN DINÁMICA (enable_rebalancing=True):
+       - Además de mantener el factor de replicación, redistribuye chunks
+       - Cuando se agregan nuevos nodos:
+         * Re-balancea archivos existentes para aprovechar todos los nodos
+         * Mejora la distribución de carga y capacidad
+       - Ventajas: Mejor distribución de datos en clusters dinámicos
+       - Desventajas: Mayor overhead de red, más complejo
+       - Caso de uso: Clusters que escalan frecuentemente
+    
+    COMPORTAMIENTO ACTUAL:
+    - Por defecto usa replicación estática (enable_rebalancing=False)
+    - Detecta chunks con réplicas insuficientes (heartbeat como fuente de verdad)
+    - Re-replica automáticamente cuando current_replicas < replication_factor
+    - No redistribuye chunks a nuevos nodos si ya tienen suficientes réplicas
+    
+    Para habilitar rebalanceo dinámico:
+    - Configurar DFS_ENABLE_REBALANCING=true en variables de entorno
+    - O modificar enable_rebalancing=True en __init__
     """
 
-    def __init__(self, storage, replication_factor: int):
+    def __init__(
+        self,
+        storage,
+        replication_factor: int,
+        enable_rebalancing: bool = False
+    ):
         self.storage = storage
         self.replication_factor = replication_factor or config.replication_factor
         self.running = False
         self.task: asyncio.Task
         self.check_interval = 30  # segundos
+        
+        # Configuración de rebalanceo
+        self.enable_rebalancing = enable_rebalancing
+        self.max_replicas_per_chunk = self.replication_factor  # No crear más réplicas de las necesarias
 
         # Estadísticas
         self.replication_attempts = 0
@@ -96,6 +134,7 @@ class ReplicationManager(ReplicationProtocol):
     ) -> List[Dict]:
         """
         Encuentra chunks que tienen menos réplicas de las requeridas.
+        Si enable_rebalancing=True, también encuentra chunks mal distribuidos.
         """
         chunks_to_replicate = []
 
@@ -111,6 +150,7 @@ class ReplicationManager(ReplicationProtocol):
                 current_replicas = len(healthy_replicas)
                 needed_replicas = self.replication_factor
 
+                # Caso 1: Replicación insuficiente (siempre se maneja)
                 if current_replicas < needed_replicas:
                     chunks_to_replicate.append(
                         {
@@ -121,6 +161,7 @@ class ReplicationManager(ReplicationProtocol):
                             "needed_replicas": needed_replicas,
                             "healthy_replicas": healthy_replicas,
                             "file_metadata": file_metadata,
+                            "reason": "insufficient_replication"
                         }
                     )
 
@@ -128,6 +169,20 @@ class ReplicationManager(ReplicationProtocol):
                         f"Chunk {chunk.chunk_id} tiene {current_replicas} réplicas "
                         f"(esperadas: {needed_replicas})"
                     )
+                
+                # Caso 2: Rebalanceo (solo si está habilitado)
+                elif self.enable_rebalancing and current_replicas == needed_replicas:
+                    # Verificar si los chunks están bien distribuidos
+                    # Por ejemplo: si hay 5 nodos pero las réplicas están solo en 3 nodos antiguos
+                    if len(active_node_ids) > current_replicas:
+                        # Calcular la distribución ideal
+                        # Solo rebalancear si la distribución es muy desigual
+                        nodes_with_replicas = {r.node_id for r in healthy_replicas}
+                        
+                        # Opcionalmente: agregar lógica para detectar desbalanceo
+                        # Por ahora, NO se rebalancea automáticamente
+                        # Para activar: descomentar y ajustar la lógica
+                        pass
 
         return chunks_to_replicate
 

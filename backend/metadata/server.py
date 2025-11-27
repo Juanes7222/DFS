@@ -43,9 +43,14 @@ class ServiceManager:
 
             # Inicializar replication manager
             self.replicator = ReplicationManager(
-                self.storage, config.replication_factor
+                self.storage,
+                config.replication_factor,
+                enable_rebalancing=config.enable_rebalancing
             )
-            logger.info("Replication Manager inicializado")
+            logger.info(
+                f"Replication Manager inicializado "
+                f"(rebalancing={'habilitado' if config.enable_rebalancing else 'deshabilitado'})"
+            )
 
             # Inicializar lease manager
             self.lease_manager = LeaseManager(self.storage)

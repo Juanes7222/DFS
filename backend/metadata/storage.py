@@ -581,7 +581,9 @@ class MetadataStorage(MetadataStorageProtocol):
     async def _update_replicas_from_heartbeat(self, node_id: str, chunk_ids: List[UUID], node_url: str) -> None:
         """
         Actualiza las réplicas de los chunks basándose en lo reportado por el heartbeat.
-        Marca las réplicas como committed si el nodo reporta tener el chunk.
+        Este método es la "fuente de verdad" - sincroniza el estado real del nodo:
+        - Marca como committed los chunks que el nodo SÍ tiene
+        - ELIMINA las réplicas de chunks que el nodo YA NO tiene
         """
         conn = self._conn
         
@@ -592,6 +594,8 @@ class MetadataStorage(MetadataStorageProtocol):
         
         chunk_ids_str = {str(c) for c in chunk_ids}
         updated_files = 0
+        replicas_added = 0
+        replicas_removed = 0
         
         for row in rows:
             file_id = row["file_id"]
@@ -600,20 +604,22 @@ class MetadataStorage(MetadataStorageProtocol):
             
             for chunk in chunks_data:
                 chunk_id = chunk.get("chunk_id")
+                replicas = chunk.get("replicas", [])
                 
                 # Si este nodo reporta tener este chunk
                 if chunk_id in chunk_ids_str:
-                    replicas = chunk.get("replicas", [])
-                    
                     # Buscar si ya existe una réplica para este nodo
                     replica_exists = False
                     for replica in replicas:
                         if replica.get("node_id") == node_id:
                             # Actualizar réplica existente
-                            replica["state"] = "committed"
-                            replica["url"] = node_url
+                            if replica.get("state") != "committed":
+                                replica["state"] = "committed"
+                                file_modified = True
+                            if replica.get("url") != node_url:
+                                replica["url"] = node_url
+                                file_modified = True
                             replica_exists = True
-                            file_modified = True
                             break
                     
                     # Si no existe, agregarla
@@ -626,6 +632,23 @@ class MetadataStorage(MetadataStorageProtocol):
                         })
                         chunk["replicas"] = replicas
                         file_modified = True
+                        replicas_added += 1
+                        logger.debug(f"Agregada réplica de chunk {chunk_id} en nodo {node_id}")
+                
+                else:
+                    # El nodo NO reporta tener este chunk
+                    # Eliminar la réplica si existía (el nodo ya no tiene el chunk)
+                    original_count = len(replicas)
+                    replicas = [r for r in replicas if r.get("node_id") != node_id]
+                    
+                    if len(replicas) < original_count:
+                        chunk["replicas"] = replicas
+                        file_modified = True
+                        replicas_removed += 1
+                        logger.warning(
+                            f"ELIMINADA réplica de chunk {chunk_id} de nodo {node_id} "
+                            f"(no reportada en heartbeat - posible pérdida de datos)"
+                        )
             
             # Actualizar el archivo si se modificó
             if file_modified:
@@ -635,8 +658,13 @@ class MetadataStorage(MetadataStorageProtocol):
                 )
                 updated_files += 1
         
-        if updated_files > 0:
-            logger.info(f"Actualizadas réplicas para {updated_files} archivos desde heartbeat de {node_id}")
+        if updated_files > 0 or replicas_added > 0 or replicas_removed > 0:
+            logger.info(
+                f"Sincronización de réplicas desde heartbeat de {node_id}: "
+                f"{updated_files} archivos actualizados, "
+                f"+{replicas_added} réplicas agregadas, "
+                f"-{replicas_removed} réplicas eliminadas"
+            )
 
     async def get_node(self, node_id: str) -> Optional[NodeInfo]:
         """Obtiene información de un nodo"""

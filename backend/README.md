@@ -314,5 +314,30 @@ dfs-system/
 │   ├── docker/          # Dockerfiles
 │   ├── prometheus/      # Configuración Prometheus
 │   └── helm/            # Helm charts (próximamente)
+├── docs/                # Documentación detallada
+│   ├── REPLICATION.md   # Estrategias de replicación
+│   ├── ARCHITECTURE.md  # Arquitectura del sistema
+│   ├── API.md           # Referencia de APIs
+│   ├── RUNBOOK.md       # Guía de operaciones
+│   └── SECURITY.md      # Consideraciones de seguridad
 └── docker-compose.yml   # Orquestación local
 ```
+
+## Documentación
+
+Para información detallada sobre diferentes aspectos del sistema, consulte:
+
+- **[REPLICATION.md](docs/REPLICATION.md)** - Estrategias de replicación (estática vs dinámica), configuración y casos de uso
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Diseño técnico, componentes y flujos de datos
+- **[API.md](docs/API.md)** - Referencia completa de endpoints REST
+- **[RUNBOOK.md](docs/RUNBOOK.md)** - Procedimientos operacionales y troubleshooting
+- **[SECURITY.md](docs/SECURITY.md)** - Consideraciones y mejores prácticas de seguridad
+
+### Lectura Recomendada
+
+Si estás empezando, lee en este orden:
+1. Este README (visión general)
+2. [REPLICATION.md](docs/REPLICATION.md) (entender cómo se replican los datos)
+3. [ARCHITECTURE.md](docs/ARCHITECTURE.md) (arquitectura técnica)
+4. [API.md](docs/API.md) (si vas a integrar con el sistema)
+
