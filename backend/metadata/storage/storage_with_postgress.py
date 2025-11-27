@@ -625,7 +625,7 @@ class PostgresMetadataStorage(MetadataStorageBase):
             
             if replicas_removed > 0:
                 logger.warning(
-                    f"⚠️ Nodo {node_id} perdió {replicas_removed} réplicas "
+                    f"Nodo {node_id} perdió {replicas_removed} réplicas "
                     f"(reportó {len(chunk_ids)} chunks). Re-replicación activada."
                 )
 

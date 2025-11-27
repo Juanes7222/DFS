@@ -279,34 +279,76 @@ class ReplicationManager(ReplicationProtocol):
             async with httpx.AsyncClient(timeout=60.0) as client:
                 # Descargar chunk del nodo origen
                 download_url = f"{source_replica.url}/api/v1/chunks/{chunk_id}"
-                response = await client.get(download_url, timeout=60.0)
-
-                if response.status_code != 200:
+                logger.info(f"Descargando chunk {chunk_id} desde: {download_url}")
+                
+                try:
+                    response = await client.get(download_url, timeout=60.0)
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as e:
                     logger.error(
-                        f"Error descargando chunk {chunk_id} desde {source_replica.node_id}"
+                        f"Error HTTP descargando chunk {chunk_id} desde {source_replica.node_id}: "
+                        f"Status {e.response.status_code}, Body: {e.response.text[:200]}"
                     )
+                    return False
+                except Exception as e:
+                    logger.error(f"Error descargando chunk {chunk_id}: {type(e).__name__}: {e}")
                     return False
 
                 chunk_data = response.content
+                logger.info(f"Chunk {chunk_id} descargado: {len(chunk_data)} bytes")
 
                 # Subir chunk al nodo destino
                 upload_url = f"http://{target_node.host}:{target_node.port}/api/v1/chunks/{chunk_id}"
-                logger.info(f"Intentando subir chunk a: {upload_url} (node_id: {target_node.node_id})")
-                files = {"file": ("chunk", chunk_data, "application/octet-stream")}
-
-                response = await client.put(upload_url, files=files, timeout=60.0)
-
-                if response.status_code == 200:
-                    logger.info(f"Chunk {chunk_id} replicado a {target_node.node_id}")
-                    return True
-                else:
+                logger.info(
+                    f"Subiendo chunk {chunk_id} a: {upload_url} "
+                    f"(node_id: {target_node.node_id}, size: {len(chunk_data)} bytes)"
+                )
+                
+                # Usar BytesIO para simular un archivo
+                from io import BytesIO
+                
+                files = {
+                    "file": (
+                        f"chunk_{chunk_id}", 
+                        BytesIO(chunk_data), 
+                        "application/octet-stream" 
+                    )
+                }
+                
+                try:
+                    # PUT con multipart/form-data (como espera el endpoint)
+                    response = await client.put(
+                        upload_url, 
+                        files=files, 
+                        timeout=60.0
+                    )
+                    
+                    if response.status_code == 201:  # El endpoint retorna 201 CREATED
+                        logger.info(f"Chunk {chunk_id} replicado exitosamente a {target_node.node_id}")
+                        return True
+                    else:
+                        logger.error(
+                            f"Error subiendo chunk {chunk_id} a {target_node.node_id}: "
+                            f"Status {response.status_code}, Body: {response.text[:500]}"
+                        )
+                        return False
+                        
+                except httpx.TimeoutException:
+                    logger.error(f"Timeout subiendo chunk {chunk_id} a {target_node.node_id}")
+                    return False
+                except Exception as e:
                     logger.error(
-                        f"Error subiendo chunk {chunk_id} a {target_node.node_id}"
+                        f"Error subiendo chunk {chunk_id} a {target_node.node_id}: "
+                        f"{type(e).__name__}: {e}"
                     )
                     return False
 
         except Exception as e:
-            logger.error(f"Error copiando chunk entre nodos: {e}")
+            logger.error(
+                f"Error inesperado copiando chunk {chunk_id} entre nodos: "
+                f"{type(e).__name__}: {e}", 
+                exc_info=True
+            )
             return False
 
     async def _update_chunk_metadata(self, file_metadata, chunk_id: UUID, target_node):
