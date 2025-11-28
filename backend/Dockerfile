@@ -33,7 +33,7 @@ COPY . /app
 EXPOSE 8000
 
 # Script de inicio con ZeroTier
-COPY start-with-zerotier.sh /app/start.sh
+COPY start_with_zerotier.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
