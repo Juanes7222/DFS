@@ -135,6 +135,7 @@ class DataNodeServer:
         @app.get("/api/v1/chunks/{chunk_id}")
         async def get_chunk(chunk_id: UUID):
             """Recupera un chunk."""
+            logger.info(f"Petición de chunk {chunk_id} recibida")
             if not self.storage:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -142,6 +143,7 @@ class DataNodeServer:
                 )
 
             try:
+                logger.info(f"Recuperando chunk {chunk_id}")
                 chunk_data, checksum = await self.storage.retrieve_chunk(chunk_id)
 
                 async def chunk_generator():
