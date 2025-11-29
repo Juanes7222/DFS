@@ -1,6 +1,7 @@
 import asyncio
 import logging
-from typing import List, Dict
+from collections import defaultdict
+from typing import List, Dict, Set, Optional
 from uuid import UUID
 
 import httpx
@@ -58,6 +59,9 @@ class ReplicationManager(ReplicationProtocol):
         self.running = False
         self.task: asyncio.Task
         self.check_interval = 30  # segundos
+        self.rebalancing_strategy = "hybrid"  # Estrategia de rebalanceo: "variance", "load", "rack_aware", "hybrid"
+        self.variance_threshold = 0.3  # Umbral para rebalanceo basado en varianza
+        self.max_rebalance_per_cycle = 50  # Limitar rebalanceos por ciclo
         
         # Configuración de rebalanceo
         self.enable_rebalancing = enable_rebalancing
@@ -115,7 +119,7 @@ class ReplicationManager(ReplicationProtocol):
 
             # Encontrar chunks que necesitan replicación
             chunks_to_replicate = await self._find_chunks_needing_replication(
-                files, active_node_ids
+                files, active_node_ids, active_nodes
             )
 
             if chunks_to_replicate:
@@ -130,20 +134,15 @@ class ReplicationManager(ReplicationProtocol):
             logger.error(f"Error verificando replicación: {e}")
 
     async def _find_chunks_needing_replication(
-        self, files: List, active_node_ids: set
+        self, files: List, active_node_ids: Set[str], active_nodes: List
     ) -> List[Dict]:
         """
-        Encuentra chunks que tienen menos réplicas de las requeridas.
-        Si enable_rebalancing=True, también encuentra chunks mal distribuidos.
+        Encuentra chunks que necesitan replicación o rebalanceo.
         """
         chunks_to_replicate = []
-        total_chunks = 0
 
         for file_metadata in files:
             for chunk in file_metadata.chunks:
-                total_chunks += 1
-                
-                # Contar réplicas saludables
                 healthy_replicas = [
                     r
                     for r in chunk.replicas
@@ -153,7 +152,7 @@ class ReplicationManager(ReplicationProtocol):
                 current_replicas = len(healthy_replicas)
                 needed_replicas = self.replication_factor
 
-                # Caso 1: Replicación insuficiente (siempre se maneja)
+                # Caso 1: Replicación insuficiente (prioridad alta)
                 if current_replicas < needed_replicas:
                     chunks_to_replicate.append(
                         {
@@ -164,31 +163,284 @@ class ReplicationManager(ReplicationProtocol):
                             "needed_replicas": needed_replicas,
                             "healthy_replicas": healthy_replicas,
                             "file_metadata": file_metadata,
-                            "reason": "insufficient_replication"
+                            "reason": "insufficient_replication",
+                            "priority": 1  # Alta prioridad
                         }
                     )
-
                     logger.warning(
-                        f"Chunk {chunk.chunk_id} ({file_metadata.path}) tiene "
-                        f"{current_replicas}/{needed_replicas} réplicas"
+                        f"Chunk {chunk.chunk_id} tiene {current_replicas} réplicas "
+                        f"(esperadas: {needed_replicas})"
                     )
                 
+                # Caso 2: Rebalanceo (prioridad baja)
                 elif self.enable_rebalancing and current_replicas == needed_replicas:
-                    # Verificar si los chunks están bien distribuidos
-                    # Por ejemplo: si hay 5 nodos pero las réplicas están solo en 3 nodos antiguos
-                    if len(active_node_ids) > current_replicas:
-                        # Calcular la distribución ideal
-                        # Solo rebalancear si la distribución es muy desigual
-                        nodes_with_replicas = {r.node_id for r in healthy_replicas}
-                        
-                        # Por ahora, NO se rebalancea automáticamente
-                        pass
+                    should_rebalance = False
+                    rebalance_reason = None
+                    
+                    # Aplicar estrategia de rebalanceo seleccionada
+                    if self.rebalancing_strategy == "variance":
+                        should_rebalance, rebalance_reason = self._check_variance_rebalance(
+                            healthy_replicas, active_nodes
+                        )
+                    elif self.rebalancing_strategy == "load":
+                        should_rebalance, rebalance_reason = self._check_load_rebalance(
+                            healthy_replicas, active_nodes
+                        )
+                    elif self.rebalancing_strategy == "rack_aware":
+                        should_rebalance, rebalance_reason = self._check_rack_aware_rebalance(
+                            healthy_replicas, active_nodes
+                        )
+                    elif self.rebalancing_strategy == "hybrid":
+                        should_rebalance, rebalance_reason = self._check_hybrid_rebalance(
+                            healthy_replicas, active_nodes
+                        )
+                    
+                    if should_rebalance:
+                        chunks_to_replicate.append(
+                            {
+                                "file_path": file_metadata.path,
+                                "chunk_id": chunk.chunk_id,
+                                "chunk_size": chunk.size,
+                                "current_replicas": current_replicas,
+                                "needed_replicas": needed_replicas,
+                                "healthy_replicas": healthy_replicas,
+                                "file_metadata": file_metadata,
+                                "reason": f"rebalance_{rebalance_reason}",
+                                "priority": 2  # Baja prioridad
+                            }
+                        )
 
-        logger.info(
-            f"Total chunks analizados: {total_chunks}, "
-            f"Sub-replicados: {len(chunks_to_replicate)}"
-        )
+        # Ordenar por prioridad (replicación antes que rebalanceo)
+        chunks_to_replicate.sort(key=lambda x: x["priority"])
+        
+        # Limitar rebalanceos por ciclo
+        rebalance_chunks = [c for c in chunks_to_replicate if c["priority"] == 2]
+        if len(rebalance_chunks) > self.max_rebalance_per_cycle:
+            # Mantener todos los de replicación + límite de rebalanceo
+            replication_chunks = [c for c in chunks_to_replicate if c["priority"] == 1]
+            limited_rebalance = rebalance_chunks[:self.max_rebalance_per_cycle]
+            chunks_to_replicate = replication_chunks + limited_rebalance
+            logger.info(
+                f"Limitando rebalanceo: {len(rebalance_chunks)} -> {self.max_rebalance_per_cycle}"
+            )
+
         return chunks_to_replicate
+    
+    def _check_variance_rebalance(
+        self, healthy_replicas: List, active_nodes: List
+    ) -> tuple[bool, Optional[str]]:
+        """
+        ESTRATEGIA 1: Rebalanceo basado en varianza de distribución.
+        
+        Detecta cuando los chunks están concentrados en pocos nodos mientras
+        otros nodos tienen poca o ninguna carga.
+        
+        Ejemplo:
+        - 5 nodos activos, pero todas las réplicas están en 2 nodos antiguos
+        - Distribución ideal: chunks repartidos uniformemente
+        """
+        if len(active_nodes) <= len(healthy_replicas):
+            return False, None
+        
+        # Calcular distribución actual de chunks por nodo
+        node_chunk_counts = defaultdict(int)
+        for node in active_nodes:
+            node_chunk_counts[node.node_id] = node.chunk_count
+        
+        # Calcular distribución ideal y varianza
+        total_chunks = sum(node_chunk_counts.values())
+        if total_chunks == 0:
+            return False, None
+        
+        avg_chunks_per_node = total_chunks / len(active_nodes)
+        variance = sum(
+            abs(count - avg_chunks_per_node) for count in node_chunk_counts.values()
+        ) / len(active_nodes)
+        
+        normalized_variance = variance / avg_chunks_per_node if avg_chunks_per_node > 0 else 0
+        
+        # Verificar si este chunk contribuye al desbalanceo
+        nodes_with_this_chunk = {r.node_id for r in healthy_replicas}
+        nodes_without_this_chunk = set(node_chunk_counts.keys()) - nodes_with_this_chunk
+        
+        if normalized_variance > self.variance_threshold and nodes_without_this_chunk:
+            # Verificar si mover una réplica mejoraría la distribución
+            max_loaded_node = max(
+                (nid for nid in nodes_with_this_chunk),
+                key=lambda nid: node_chunk_counts[nid]
+            )
+            min_loaded_node = min(
+                (nid for nid in nodes_without_this_chunk),
+                key=lambda nid: node_chunk_counts[nid]
+            )
+            
+            load_diff = node_chunk_counts[max_loaded_node] - node_chunk_counts[min_loaded_node]
+            
+            if load_diff > 2:  # Solo si la diferencia es significativa
+                return True, f"variance_{normalized_variance:.2f}"
+        
+        return False, None
+
+    def _check_load_rebalance(
+        self, healthy_replicas: List, active_nodes: List
+    ) -> tuple[bool, Optional[str]]:
+        """
+        ESTRATEGIA 2: Rebalanceo basado en carga de nodos.
+        
+        Mueve réplicas de nodos sobrecargados a nodos con más capacidad.
+        Considera tanto el número de chunks como el espacio disponible.
+        """
+        if len(active_nodes) <= len(healthy_replicas):
+            return False, None
+        
+        # Crear mapa de nodos con sus métricas
+        node_metrics = {}
+        for node in active_nodes:
+            if node.total_space > 0:
+                usage_ratio = 1 - (node.free_space / node.total_space)
+            else:
+                usage_ratio = 1.0
+            
+            node_metrics[node.node_id] = {
+                "chunk_count": node.chunk_count,
+                "usage_ratio": usage_ratio,
+                "free_space": node.free_space,
+                "load_score": (node.chunk_count / 100) + usage_ratio  # Score combinado
+            }
+        
+        # Identificar nodos con réplicas
+        nodes_with_replicas = {r.node_id for r in healthy_replicas}
+        
+        # Encontrar nodo más cargado con réplica
+        overloaded_nodes = [
+            nid for nid in nodes_with_replicas
+            if node_metrics[nid]["load_score"] > 1.5  # Umbral de sobrecarga
+        ]
+        
+        # Encontrar nodos con baja carga sin réplica
+        underloaded_nodes = [
+            nid for nid in node_metrics.keys()
+            if nid not in nodes_with_replicas and node_metrics[nid]["load_score"] < 0.8
+        ]
+        
+        if overloaded_nodes and underloaded_nodes:
+            max_load = max(node_metrics[nid]["load_score"] for nid in overloaded_nodes)
+            min_load = min(node_metrics[nid]["load_score"] for nid in underloaded_nodes)
+            
+            if max_load - min_load > 0.5:  # Diferencia significativa
+                return True, f"load_diff_{(max_load - min_load):.2f}"
+        
+        return False, None
+
+    def _check_rack_aware_rebalance(
+        self, healthy_replicas: List, active_nodes: List
+    ) -> tuple[bool, Optional[str]]:
+        """
+        ESTRATEGIA 3: Rebalanceo consciente de racks/zonas.
+        
+        Asegura que las réplicas estén distribuidas en diferentes racks
+        para tolerancia a fallos de rack completo.
+        """
+        if len(active_nodes) <= len(healthy_replicas):
+            return False, None
+        
+        # Agrupar nodos por rack
+        racks = defaultdict(list)
+        for node in active_nodes:
+            rack = node.rack or "default"
+            racks[rack].append(node.node_id)
+        
+        if len(racks) <= 1:
+            return False, None  # No hay múltiples racks
+        
+        # Verificar distribución de réplicas por rack
+        replica_racks = defaultdict(int)
+        for replica in healthy_replicas:
+            for rack, nodes in racks.items():
+                if replica.node_id in nodes:
+                    replica_racks[rack] += 1
+                    break
+        
+        # Verificar si hay racks sin réplicas
+        empty_racks = [rack for rack in racks.keys() if rack not in replica_racks]
+        
+        # Verificar si hay racks con múltiples réplicas
+        overloaded_racks = [
+            rack for rack, count in replica_racks.items() if count > 1
+        ]
+        
+        if empty_racks and overloaded_racks:
+            return True, f"rack_distribution"
+        
+        return False, None
+
+    def _check_hybrid_rebalance(
+        self, healthy_replicas: List, active_nodes: List
+    ) -> tuple[bool, Optional[str]]:
+        """
+        ESTRATEGIA 4: Híbrida (combina múltiples factores).
+        
+        Considera varianza, carga y racks simultáneamente.
+        Usa un sistema de puntuación para decidir.
+        """
+        variance_check, variance_reason = self._check_variance_rebalance(
+            healthy_replicas, active_nodes
+        )
+        load_check, load_reason = self._check_load_rebalance(
+            healthy_replicas, active_nodes
+        )
+        rack_check, rack_reason = self._check_rack_aware_rebalance(
+            healthy_replicas, active_nodes
+        )
+        
+        # Sistema de puntuación
+        score = 0
+        reasons = []
+        
+        if variance_check:
+            score += 2
+            reasons.append(variance_reason)
+        
+        if load_check:
+            score += 3  # Mayor peso a carga
+            reasons.append(load_reason)
+        
+        if rack_check:
+            score += 4  # Mayor peso a diversidad de racks
+            reasons.append(rack_reason)
+        
+        # Umbral de decisión
+        if score >= 3:  # Requiere al menos 2 factores o rack diversity
+            return True, "+".join(reasons)
+        
+        return False, None
+    
+    def _calculate_node_distribution_score(self, active_nodes: List) -> Dict:
+        """
+        Calcula scores de distribución para cada nodo.
+        Útil para tomar decisiones de rebalanceo.
+        """
+        scores = {}
+        total_chunks = sum(node.chunk_count for node in active_nodes)
+        total_space = sum(node.total_space for node in active_nodes)
+        
+        for node in active_nodes:
+            chunk_ratio = node.chunk_count / total_chunks if total_chunks > 0 else 0
+            space_ratio = node.total_space / total_space if total_space > 0 else 0
+            usage_ratio = 1 - (node.free_space / node.total_space) if node.total_space > 0 else 1
+            
+            # Score más bajo = mejor candidato para recibir chunks
+            score = (chunk_ratio * 0.4) + (usage_ratio * 0.4) + (1 - space_ratio) * 0.2
+            
+            scores[node.node_id] = {
+                "score": score,
+                "chunk_count": node.chunk_count,
+                "free_space": node.free_space,
+                "total_space": node.total_space,
+                "rack": node.rack
+            }
+        
+        return scores
 
     async def _replicate_chunks(
         self, chunks_to_replicate: List[Dict], available_nodes: List

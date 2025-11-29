@@ -170,6 +170,7 @@ async def proxy_download_chunk(
         # Obtener metadata del archivo para encontrar réplicas
         file_metadata = await storage.get_file_by_path(file_path)
         if not file_metadata:
+            logger.warning(f"Archivo no encontrado en metadata: {file_path}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Archivo no encontrado: {file_path}"
@@ -183,12 +184,14 @@ async def proxy_download_chunk(
                 break
         
         if not chunk_entry:
+            logger.warning(f"Chunk {chunk_id} no encontrado en archivo {file_path}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Chunk {chunk_id} no encontrado en archivo {file_path}"
             )
         
         if not chunk_entry.replicas:
+            logger.warning(f"No hay réplicas para chunk {chunk_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No hay réplicas disponibles para chunk {chunk_id}"
