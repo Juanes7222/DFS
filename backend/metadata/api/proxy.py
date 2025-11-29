@@ -25,7 +25,7 @@ router = APIRouter()
 )
 async def proxy_upload_chunk(
     chunk_id: UUID,
-    file: UploadFile = File(...),
+    file: UploadFile = File(..., description="Chunk file (max 100MB)"),
     target_nodes: str = Query(..., description="Node IDs separados por comas")
 ):
     """

@@ -210,6 +210,10 @@ def main():
         port=config.metadata_port,
         log_level=config.log_level.lower(),
         access_log=True,
+        limit_max_requests=1000,
+        timeout_keep_alive=65,
+        # Aumentar límites para chunks grandes (64MB + overhead)
+        limit_concurrency=1000,
     )
 
 
