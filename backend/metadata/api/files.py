@@ -76,7 +76,7 @@ async def upload_init(request: UploadInitRequest):
             for j in range(config.replication_factor):
                 node_idx = (i * config.replication_factor + j) % len(nodes)
                 node = nodes[node_idx]
-                target_nodes.append(f"http://{node.host}:{node.port}")
+                target_nodes.append(node.node_id)
 
             chunk_target = await storage.create_chunk_plan(chunk_size, target_nodes)
             chunks.append(chunk_target)
