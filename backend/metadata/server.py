@@ -12,6 +12,7 @@ from metadata.replicator import ReplicationManager
 from metadata.leases import LeaseManager
 from metadata import context
 from metadata.api import file_router, node_router, lease_router, system_router
+from metadata.api.proxy import router as proxy_router
 from monitoring.metrics import MetricsMiddleware
 from metadata.init_storage import create_metadata_storage
 
@@ -182,6 +183,7 @@ def create_app() -> FastAPI:
     app.include_router(node_router, prefix="/api/v1", tags=["Nodes"])
     app.include_router(lease_router, prefix="/api/v1", tags=["Leases"])
     app.include_router(system_router, prefix="/api/v1", tags=["System"])
+    app.include_router(proxy_router, prefix="/api/v1/proxy", tags=["Proxy"])
 
     return app
 

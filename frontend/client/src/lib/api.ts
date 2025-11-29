@@ -105,7 +105,7 @@ class APIService {
     );
   }
 
-  // En api.ts - Sección de uploadFile
+  // En api.ts - Upload via Proxy
 
   async uploadFile(
     file: File,
@@ -132,7 +132,7 @@ class APIService {
     const { file_id, chunks } = initResponse;
     const chunkSize = 64 * 1024 * 1024;
 
-    // 2. Upload chunks with pipeline replication
+    // 2. Upload chunks via metadata service proxy
     const commitData: Array<{
       chunk_id: string;
       checksum: string;
@@ -153,31 +153,16 @@ class APIService {
         .map(b => b.toString(16).padStart(2, "0"))
         .join("");
 
-      // Pipeline replication: upload only to first node
-      const primaryTarget = chunk.targets[0];
-      const replicationChain = chunk.targets.slice(1);
-
       try {
         const formData = new FormData();
         formData.append("file", chunkBlob);
 
-        // FIX: Normalizar URLs para que funcionen desde el navegador
-        const normalizedPrimary = this.normalizeNodeUrl(primaryTarget);
-        const normalizedChain = replicationChain.map(url =>
-          this.normalizeNodeUrl(url)
-        );
+        // Upload via proxy endpoint (no need to access DataNodes directly)
+        const proxyUrl = `${this.baseURL}/api/v1/proxy/chunks/${chunk.chunk_id}?target_nodes=${chunk.targets.join(",")}`;
 
-        // Build URL with replication chain
-        const url = new URL(
-          `${normalizedPrimary}/api/v1/chunks/${chunk.chunk_id}`
-        );
-        if (normalizedChain.length > 0) {
-          url.searchParams.set("replicate_to", normalizedChain.join("|"));
-        }
+        console.log(`📤 Uploading chunk ${i + 1}/${chunks.length} via proxy`);
 
-        console.log(`Uploading to: ${url.toString()}`);
-
-        const response = await fetch(url.toString(), {
+        const response = await fetch(proxyUrl, {
           method: "PUT",
           body: formData,
         });
@@ -216,14 +201,6 @@ class APIService {
     });
   }
 
-  /**
-   * Normaliza URLs de nodos reemplazando 0.0.0.0 con localhost
-   * para que funcionen desde el navegador
-   */
-  private normalizeNodeUrl(url: string): string {
-    return url.replace("0.0.0.0", "localhost");
-  }
-
   async downloadFile(
     path: string,
     onProgress?: (progress: number) => void
@@ -231,41 +208,35 @@ class APIService {
     // Get file metadata
     const metadata = await this.getFile(path);
 
-    // Download chunks
+    // Download chunks via proxy
     const chunkBlobs: Blob[] = [];
 
     for (let i = 0; i < metadata.chunks.length; i++) {
       const chunk = metadata.chunks[i];
 
-      // Try replicas
-      let chunkBlob: Blob | null = null;
-      for (const replica of chunk.replicas) {
-        try {
-          // FIX: Normalizar URL también para download
-          const normalizedUrl = this.normalizeNodeUrl(replica.url);
-          const response = await fetch(
-            `${normalizedUrl}/api/v1/chunks/${chunk.chunk_id}`
-          );
-          if (response.ok) {
-            chunkBlob = await response.blob();
-            break;
-          }
-        } catch (error) {
-          console.error(
-            `Error downloading chunk ${i} from ${replica.url}:`,
-            error
+      try {
+        // Download via proxy endpoint (no need to access DataNodes directly)
+        const proxyUrl = `${this.baseURL}/api/v1/proxy/chunks/${chunk.chunk_id}?file_path=${encodeURIComponent(path)}`;
+        
+        console.log(`📥 Downloading chunk ${i + 1}/${metadata.chunks.length} via proxy`);
+
+        const response = await fetch(proxyUrl);
+        
+        if (!response.ok) {
+          throw new Error(
+            `Download failed: ${response.status} ${response.statusText}`
           );
         }
-      }
 
-      if (!chunkBlob) {
-        throw new Error(`Failed to download chunk ${i}`);
-      }
+        const chunkBlob = await response.blob();
+        chunkBlobs.push(chunkBlob);
 
-      chunkBlobs.push(chunkBlob);
-
-      if (onProgress) {
-        onProgress(((i + 1) / metadata.chunks.length) * 100);
+        if (onProgress) {
+          onProgress(((i + 1) / metadata.chunks.length) * 100);
+        }
+      } catch (error) {
+        console.error(`Error downloading chunk ${i}:`, error);
+        throw new Error(`Failed to download chunk ${i}: ${error}`);
       }
     }
 
