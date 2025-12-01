@@ -46,6 +46,20 @@ function formatBytes(bytes: number): string {
   return `${size.toFixed(2)} ${units[unitIndex]}`;
 }
 
+// Devuelve la extensión (formato) del archivo en mayúsculas, o '—' si no tiene extensión
+function getFileFormat(path: string): string {
+
+  // Toma la última parte después de '/'
+  const base = path.split("/").pop() || path;
+  const dotIndex = base.lastIndexOf(".");
+  if (dotIndex === -1 || dotIndex === 0) return "—";
+  const ext = base.slice(dotIndex + 1);
+
+  // Evita devolver algo raro
+  if (!ext || ext.includes("/")) return "—";
+  return ext.toUpperCase();
+}
+
 export default function Files() {
   const [files, setFiles] = useState<FileMetadata[]>([]);
   const [filteredFiles, setFilteredFiles] = useState<FileMetadata[]>([]);
@@ -179,7 +193,7 @@ export default function Files() {
           </Alert>
         )}
 
-        {/* Search */}
+        {/* Barra de búsqueda */}
         <Card className="mb-6">
           <CardContent className="pt-6">
             <div className="relative">
@@ -194,7 +208,7 @@ export default function Files() {
           </CardContent>
         </Card>
 
-        {/* Files Table/Cards */}
+        {/* Tabla de archivos / Tarjetas */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base sm:text-lg text-foreground">
@@ -218,6 +232,7 @@ export default function Files() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Ruta</TableHead>
+                        <TableHead>Formato</TableHead> {/* nueva columna */}
                         <TableHead>Tamaño</TableHead>
                         <TableHead>Chunks</TableHead>
                         <TableHead>Creado</TableHead>
@@ -233,6 +248,14 @@ export default function Files() {
                               <span className="truncate max-w-xs">{file.path}</span>
                             </div>
                           </TableCell>
+
+                          {/* Formato */}
+                          <TableCell>
+                            <span className="text-xs font-medium text-muted-foreground">
+                              {getFileFormat(file.path)}
+                            </span>
+                          </TableCell>
+
                           <TableCell>{formatBytes(file.size)}</TableCell>
                           <TableCell>{file.chunks.length}</TableCell>
                           <TableCell className="whitespace-nowrap">
@@ -269,7 +292,7 @@ export default function Files() {
                   </Table>
                 </div>
 
-                {/* Mobile Cards */}
+                {/* Tarjetas */}
                 <div className="md:hidden space-y-3">
                   {filteredFiles.map((file) => (
                     <div key={file.file_id} className="p-4 bg-muted rounded-lg space-y-3">
@@ -283,6 +306,11 @@ export default function Files() {
                           <p className="text-xs text-muted-foreground">
                             {new Date(file.created_at).toLocaleDateString()}
                           </p>
+                        </div>
+
+                        {/* Mostrar formato en la tarjeta móvil */}
+                        <div className="text-xs text-muted-foreground ml-3 flex-shrink-0">
+                          {getFileFormat(file.path)}
                         </div>
                       </div>
                       
@@ -321,7 +349,7 @@ export default function Files() {
           </CardContent>
         </Card>
 
-        {/* Upload Dialog */}
+        {/* Dialog de actualización */}
         <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -408,7 +436,7 @@ export default function Files() {
           </DialogContent>
         </Dialog>
 
-        {/* File Info Dialog */}
+        {/* Dialog de información del archivo */}
         <Dialog open={infoDialogOpen} onOpenChange={setInfoDialogOpen}>
           <DialogContent className="max-w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
