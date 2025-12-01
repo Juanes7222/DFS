@@ -90,11 +90,11 @@ export default function Nodes() {
   const activeNodes = nodes.filter(n => n.state === "active");
 
   /*
-   Agrupamos los nodos por host para evitar duplicar el almacenamiento.
-   Se selecciona un "representante" por cada host:
+  Agrupamos los nodos por host para evitar duplicar el almacenamiento.
+  Se selecciona un "representante" por cada host:
     - Solo se consideran los nodo activo (el más reciente por last_heartbeat)
     - si no hay nodos activos en el host, se usa el nodo con last_heartbeat más reciente
-   
+    
     Solo incluyen hosts que tengan al menos un nodo activo, esto evita contar hosts totalmente inactivos.
    */
   function computeStorageByHost(nodesList: NodeInfo[]) {
@@ -110,7 +110,7 @@ export default function Nodes() {
     // Cuenta los hosts únicos (Por si acaso)
     const uniqueHostsCount = groups.size;
 
-    for (const [host, group] of groups.entries()) {
+    for (const [host, group] of Array.from(groups.entries())) {
       // Filtra los nodos activos del host
       const activeInHost = group.filter(g => g.state === "active");
 
