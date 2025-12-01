@@ -158,15 +158,15 @@ export default function Files() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
-        <div className="mb-8 flex items-center justify-between">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+        <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Archivos</h1>
-            <p className="text-muted-foreground mt-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Archivos</h1>
+            <p className="text-muted-foreground mt-2 text-sm sm:text-base">
               Administra tus archivos distribuidos
             </p>
           </div>
-          <Button onClick={() => setUploadDialogOpen(true)}>
+          <Button onClick={() => setUploadDialogOpen(true)} className="w-full sm:w-auto">
             <Upload className="h-4 w-4 mr-2" />
             Subir Archivo
           </Button>
@@ -194,10 +194,10 @@ export default function Files() {
           </CardContent>
         </Card>
 
-        {/* Files Table */}
+        {/* Files Table/Cards */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-foreground">
+            <CardTitle className="text-base sm:text-lg text-foreground">
               Archivos ({filteredFiles.length})
             </CardTitle>
           </CardHeader>
@@ -207,70 +207,123 @@ export default function Files() {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : filteredFiles.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
+              <div className="text-center py-8 text-muted-foreground text-sm">
                 {searchQuery ? "No se encontraron archivos que coincidan con tu búsqueda" : "Aún no se han subido archivos"}
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Ruta</TableHead>
-                    <TableHead>Tamaño</TableHead>
-                    <TableHead>Chunks</TableHead>
-                    <TableHead>Creado</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <>
+                {/* Desktop Table */}
+                <div className="hidden md:block overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Ruta</TableHead>
+                        <TableHead>Tamaño</TableHead>
+                        <TableHead>Chunks</TableHead>
+                        <TableHead>Creado</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredFiles.map((file) => (
+                        <TableRow key={file.file_id}>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <FileText className="h-4 w-4 text-primary flex-shrink-0" />
+                              <span className="truncate max-w-xs">{file.path}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>{formatBytes(file.size)}</TableCell>
+                          <TableCell>{file.chunks.length}</TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {new Date(file.created_at).toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => showFileInfo(file)}
+                              >
+                                <Info className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDownload(file)}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDelete(file)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Mobile Cards */}
+                <div className="md:hidden space-y-3">
                   {filteredFiles.map((file) => (
-                    <TableRow key={file.file_id}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          <FileText className="h-4 w-4 text-primary" />
-                          {file.path}
+                    <div key={file.file_id} className="p-4 bg-muted rounded-lg space-y-3">
+                      <div className="flex items-start gap-2">
+                        <FileText className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-foreground text-sm truncate">{file.path}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {formatBytes(file.size)} • {file.chunks.length} chunks
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(file.created_at).toLocaleDateString()}
+                          </p>
                         </div>
-                      </TableCell>
-                      <TableCell>{formatBytes(file.size)}</TableCell>
-                      <TableCell>{file.chunks.length}</TableCell>
-                      <TableCell>
-                        {new Date(file.created_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => showFileInfo(file)}
-                          >
-                            <Info className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDownload(file)}
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete(file)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                      
+                      <div className="flex gap-2 pt-2 border-t border-border">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => showFileInfo(file)}
+                        >
+                          <Info className="h-4 w-4 mr-2" />
+                          Info
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => handleDownload(file)}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Descargar
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDelete(file)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
 
         {/* Upload Dialog */}
         <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-          <DialogContent>
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Subir Archivo</DialogTitle>
               <DialogDescription>
@@ -325,15 +378,20 @@ export default function Files() {
               )}
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button
                 variant="outline"
                 onClick={() => setUploadDialogOpen(false)}
                 disabled={uploading}
+                className="w-full sm:w-auto"
               >
                 Cancelar
               </Button>
-              <Button onClick={handleUpload} disabled={uploading || !selectedFile || !remotePath}>
+              <Button 
+                onClick={handleUpload} 
+                disabled={uploading || !selectedFile || !remotePath}
+                className="w-full sm:w-auto"
+              >
                 {uploading ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -352,17 +410,17 @@ export default function Files() {
 
         {/* File Info Dialog */}
         <Dialog open={infoDialogOpen} onOpenChange={setInfoDialogOpen}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Información del Archivo</DialogTitle>
             </DialogHeader>
 
             {selectedFileInfo && (
               <div className="space-y-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Ruta</p>
-                    <p className="text-sm text-foreground">{selectedFileInfo.path}</p>
+                    <p className="text-sm text-foreground break-all">{selectedFileInfo.path}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Tamaño</p>
@@ -393,7 +451,7 @@ export default function Files() {
                         </p>
                         <div className="mt-2 space-y-1">
                           {chunk.replicas.map((replica, ridx) => (
-                            <div key={ridx} className="text-xs text-muted-foreground">
+                            <div key={ridx} className="text-xs text-muted-foreground break-all">
                               • {replica.url} ({replica.state})
                             </div>
                           ))}

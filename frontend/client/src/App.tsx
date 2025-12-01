@@ -7,8 +7,6 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Dashboard from "./pages/Dashboard";
 import Files from "./pages/Files";
 import Nodes from "./pages/Nodes";
-import Storage from "./pages/Storage";
-import Activity from "./pages/Activity";
 
 function Router() {
   return (
@@ -16,8 +14,6 @@ function Router() {
       <Route path={"/"} component={Dashboard} />
       <Route path={"/files"} component={Files} />
       <Route path={"/nodes"} component={Nodes} />
-      <Route path={"/storage"} component={Storage} />
-      <Route path={"/activity"} component={Activity} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
