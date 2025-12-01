@@ -88,8 +88,50 @@ export default function Nodes() {
   }
 
   const activeNodes = nodes.filter(n => n.state === "active");
-  const totalStorage = nodes.reduce((sum, n) => sum + n.total_space, 0);
-  const usedStorage = nodes.reduce((sum, n) => sum + (n.total_space - n.free_space), 0);
+
+  /*
+  Agrupamos los nodos por host para evitar duplicar el almacenamiento.
+  Se selecciona un "representante" por cada host:
+    - Solo se consideran los nodo activo (el más reciente por last_heartbeat)
+    - si no hay nodos activos en el host, se usa el nodo con last_heartbeat más reciente
+    
+    Solo incluyen hosts que tengan al menos un nodo activo, esto evita contar hosts totalmente inactivos.
+   */
+  function computeStorageByHost(nodesList: NodeInfo[]) {
+    const groups = new Map<string, NodeInfo[]>();
+    for (const n of nodesList) {
+      const host = n.host ?? "unknown";
+      if (!groups.has(host)) groups.set(host, []);
+      groups.get(host)!.push(n);
+    }
+
+    let total = 0;
+    let used = 0;
+    // Cuenta los hosts únicos (Por si acaso)
+    const uniqueHostsCount = groups.size;
+
+    for (const [host, group] of Array.from(groups.entries())) {
+      // Filtra los nodos activos del host
+      const activeInHost = group.filter(g => g.state === "active");
+
+      // Si no hay nodos activos en ese host, lo ignoramos.
+      if (activeInHost.length === 0) continue;
+
+      // Elegimos el representante del host: el activo con last_heartbeat más reciente
+      const rep = activeInHost.reduce((a, b) => {
+        return new Date(a.last_heartbeat) > new Date(b.last_heartbeat) ? a : b;
+      });
+
+      /* Sumamos una sola vez por host con los valores del representante
+        asumiendo que total_space/free_space son del host físico compartido. */
+      total += rep.total_space;
+      used += (rep.total_space - rep.free_space);
+    }
+
+    return { total, used, uniqueHostsCount };
+  }
+
+  const { total: totalStorage, used: usedStorage } = computeStorageByHost(nodes);
   const storageUsagePercent = totalStorage > 0 ? (usedStorage / totalStorage) * 100 : 0;
 
   return (

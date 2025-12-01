@@ -160,7 +160,7 @@ class APIService {
         // Upload via proxy endpoint (no need to access DataNodes directly)
         const proxyUrl = `${this.baseURL}/api/v1/proxy/chunks/${chunk.chunk_id}?target_nodes=${chunk.targets.join(",")}`;
 
-        console.log(`📤 Uploading chunk ${i + 1}/${chunks.length} via proxy`);
+        console.log(`Uploading chunk ${i + 1}/${chunks.length} via proxy`);
 
         const response = await fetch(proxyUrl, {
           method: "PUT",
@@ -218,7 +218,7 @@ class APIService {
         // Download via proxy endpoint (no need to access DataNodes directly)
         const proxyUrl = `${this.baseURL}/api/v1/proxy/chunks/${chunk.chunk_id}?file_path=${encodeURIComponent(path)}`;
         
-        console.log(`📥 Downloading chunk ${i + 1}/${metadata.chunks.length} via proxy`);
+        console.log(`Downloading chunk ${i + 1}/${metadata.chunks.length} via proxy`);
 
         const response = await fetch(proxyUrl);
         

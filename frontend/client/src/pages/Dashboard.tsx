@@ -18,6 +18,40 @@ function formatBytes(bytes: number): string {
   return `${size.toFixed(2)} ${units[unitIndex]}`;
 }
 
+  /*
+  Agrupa los nodos por host, devolviendo el espacio total y usado por host único.
+  Solo incluye hosts que tengan al menos un nodo 'active'.
+  */
+function computeStorageByHost(nodesList: NodeInfo[]) {
+  const groups = new Map<string, NodeInfo[]>();
+  for (const n of nodesList) {
+    const host = n.host ?? "unknown";
+    if (!groups.has(host)) groups.set(host, []);
+    groups.get(host)!.push(n);
+  }
+
+  let total = 0;
+  let used = 0;
+
+  for (const [, group] of Array.from(groups.entries())) {
+    // Filtrar nodos activos del host
+    const activeInHost = group.filter(g => g.state === "active");
+
+    // Si no hay nodos activos en ese host, lo ignoramos
+    if (activeInHost.length === 0) continue;
+
+    // Elegimos representante: el activo con last_heartbeat más reciente
+    const rep = activeInHost.reduce((a, b) => {
+      return new Date(a.last_heartbeat) > new Date(b.last_heartbeat) ? a : b;
+    });
+
+    total += rep.total_space;
+    used += (rep.total_space - rep.free_space);
+  }
+
+  return { total, used };
+}
+
 export default function Dashboard() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [nodes, setNodes] = useState<NodeInfo[]>([]);
@@ -51,8 +85,11 @@ export default function Dashboard() {
   }
 
   const activeNodes = nodes.filter(n => n.state === "active");
-  const totalStorage = nodes.reduce((sum, n) => sum + n.total_space, 0);
-  const usedStorage = nodes.reduce((sum, n) => sum + (n.total_space - n.free_space), 0);
+
+  // Usamos la función que agrupa por host para calcular almacenamiento real
+  const { total: totalStorage, used: usedStorage } = computeStorageByHost(nodes);
+
+  // Si quieres mantener totalChunks como suma por nodo, lo dejamos así.
   const totalChunks = nodes.reduce((sum, n) => sum + n.chunk_count, 0);
 
   return (
@@ -137,7 +174,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          {/* Almacenamiento Usado */}
+          {/* Almacenamiento Usado (ahora por host, sin duplicados) */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">
