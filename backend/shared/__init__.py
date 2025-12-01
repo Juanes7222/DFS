@@ -20,6 +20,7 @@ from .models import (
     UploadInitResponse,
     HealthResponse,
     SystemStats,
+    RegisterRequest
 )
 
 # Utilidades
@@ -42,11 +43,12 @@ from .security import (
 
 # Protocolos
 from .protocols import (
-    MetadataStorageProtocol,
+    MetadataStorageBase,
     ChunkStorageProtocol,
     ReplicationProtocol,
     HealthCheckProtocol,
 )
+
 
 __all__ = [
     # Models
@@ -79,8 +81,8 @@ __all__ = [
     "verify_jwt_token",
     "require_permission",
     # Protocols
-    "MetadataStorageProtocol",
     "ChunkStorageProtocol",
     "ReplicationProtocol",
     "HealthCheckProtocol",
+    "MetadataStorageBase",
 ]

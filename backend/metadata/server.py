@@ -7,12 +7,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import config
-from metadata.storage import MetadataStorage
+from shared.protocols import MetadataStorageBase
 from metadata.replicator import ReplicationManager
 from metadata.leases import LeaseManager
 from metadata import context
 from metadata.api import file_router, node_router, lease_router, system_router
+from metadata.api.proxy import router as proxy_router
 from monitoring.metrics import MetricsMiddleware
+from metadata.init_storage import create_metadata_storage
 
 # Configura logging
 logging.basicConfig(
@@ -26,7 +28,7 @@ class ServiceManager:
     """Servicio principal de metadatos del DFS. Gestor centralizado de servicios del Metadata Service"""
 
     def __init__(self):
-        self.storage: Optional[MetadataStorage] = None
+        self.storage: Optional[MetadataStorageBase] = None
         self.replicator: Optional[ReplicationManager] = None
         self.lease_manager: Optional[LeaseManager] = None
         self.metrics_task: Optional[asyncio.Task] = None
@@ -37,15 +39,20 @@ class ServiceManager:
 
         try:
             # Inicializar storage
-            self.storage = MetadataStorage()
+            self.storage = create_metadata_storage()
             await self.storage.initialize()
             logger.info("Storage inicializado correctamente")
 
             # Inicializar replication manager
             self.replicator = ReplicationManager(
-                self.storage, config.replication_factor
+                self.storage,
+                config.replication_factor,
+                enable_rebalancing=config.enable_rebalancing
             )
-            logger.info("Replication Manager inicializado")
+            logger.info(
+                f"Replication Manager inicializado "
+                f"(rebalancing={'habilitado' if config.enable_rebalancing else 'deshabilitado'})"
+            )
 
             # Inicializar lease manager
             self.lease_manager = LeaseManager(self.storage)
@@ -176,13 +183,15 @@ def create_app() -> FastAPI:
     app.include_router(node_router, prefix="/api/v1", tags=["Nodes"])
     app.include_router(lease_router, prefix="/api/v1", tags=["Leases"])
     app.include_router(system_router, prefix="/api/v1", tags=["System"])
+    app.include_router(proxy_router, prefix="/api/v1/proxy", tags=["Proxy"])
 
     return app
 
-
-# Crea la aplicación
 app = create_app()
 
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
 
 def main():
     """Función principal para ejecutar el servidor"""
@@ -201,6 +210,10 @@ def main():
         port=config.metadata_port,
         log_level=config.log_level.lower(),
         access_log=True,
+        limit_max_requests=1000,
+        timeout_keep_alive=65,
+        # Aumentar límites para chunks grandes (64MB + overhead)
+        limit_concurrency=1000,
     )
 
 

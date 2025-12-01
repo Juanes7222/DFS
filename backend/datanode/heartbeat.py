@@ -15,11 +15,13 @@ logger = logging.getLogger(__name__)
 class HeartbeatManager:
     """Gestiona el envío periódico de heartbeats al Metadata Service"""
 
-    def __init__(self, node_id: str, storage, metadata_url: str, port: int):
+    def __init__(self, node_id: str, storage, metadata_url: str, port: int, zerotier_ip: Optional[str] = None, zerotier_node_id: Optional[str] = None):
         self.node_id = node_id
         self.storage = storage
         self.metadata_url = metadata_url.rstrip('/')
         self.port = port
+        self.zerotier_ip = zerotier_ip
+        self.zerotier_node_id = zerotier_node_id
         self.running = False
         self.task: Optional[asyncio.Task] = None
         self.consecutive_failures = 0
@@ -28,12 +30,18 @@ class HeartbeatManager:
     def _get_public_url(self) -> str:
         """
         Obtiene la URL pública del DataNode.
-        Reemplaza 0.0.0.0 con localhost para desarrollo.
+        Usa ZeroTier IP si está disponible, sino usa la configuración.
         """
-        host = config.datanode_host
-        if host == "0.0.0.0":
-            # En desarrollo, usar localhost
-            host = "localhost"
+        # Prioridad: ZeroTier IP > config host
+        if self.zerotier_ip:
+            host = self.zerotier_ip
+        else:
+            host = config.datanode_host
+            if host == "0.0.0.0":
+                # Fallback a localhost solo si no hay ZeroTier
+                host = "localhost"
+                logger.warning("Usando localhost como fallback. Considera configurar ZeroTier.")
+        
         return f"http://{host}:{self.port}"
 
     def is_running(self) -> bool:
@@ -131,9 +139,17 @@ class HeartbeatManager:
                 "chunk_ids": [str(chunk_id) for chunk_id in chunk_ids],
             }
             
+            # Agregar campos de ZeroTier si están disponibles
+            if self.zerotier_ip:
+                payload["zerotier_ip"] = self.zerotier_ip
+            if self.zerotier_node_id:
+                payload["zerotier_node_id"] = self.zerotier_node_id
+            
             logger.debug(f"Enviando heartbeat a: {url}")
             logger.debug(f"URL pública: {public_url}")
-            logger.debug(f"Chunks almacenados: {len(chunk_ids)}")
+            logger.info(f"Reportando {len(chunk_ids)} chunks almacenados en heartbeat")
+            if len(chunk_ids) > 0:
+                logger.debug(f"Chunks: {[str(c) for c in chunk_ids[:5]]}{'...' if len(chunk_ids) > 5 else ''}")
 
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(url, json=payload)
@@ -179,19 +195,23 @@ class HeartbeatManager:
         chunk_ids = []
         
         if not self.storage.storage_path.exists():
-            logger.debug(f"Directorio de storage no existe: {self.storage.storage_path}")
+            logger.warning(f"Directorio de storage no existe: {self.storage.storage_path}")
             return chunk_ids
 
         try:
-            for chunk_file in self.storage.storage_path.glob("*.chunk"):
+            chunk_files = list(self.storage.storage_path.glob("*.chunk"))
+            logger.debug(f"Buscando chunks en: {self.storage.storage_path}")
+            logger.debug(f"Archivos .chunk encontrados: {len(chunk_files)}")
+            
+            for chunk_file in chunk_files:
                 try:
                     chunk_id = UUID(chunk_file.stem)
                     chunk_ids.append(chunk_id)
                 except ValueError:
-                    logger.debug(f"Archivo con nombre inválido ignorado: {chunk_file.name}")
+                    logger.warning(f"Archivo con nombre inválido ignorado: {chunk_file.name}")
                     continue
                     
-            logger.debug(f"Encontrados {len(chunk_ids)} chunks en {self.storage.storage_path}")
+            logger.info(f"Encontrados {len(chunk_ids)} chunks válidos en {self.storage.storage_path}")
             
         except Exception as e:
             logger.error(f"Error escaneando chunks: {e}", exc_info=True)

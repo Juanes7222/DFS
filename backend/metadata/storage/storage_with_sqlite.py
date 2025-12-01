@@ -20,12 +20,12 @@ from shared.models import (
     NodeState,
     ReplicaInfo,
 )
-from shared.protocols import MetadataStorageProtocol
+from shared.protocols import MetadataStorageBase
 
 logger = logging.getLogger(__name__)
 
 
-class MetadataStorage(MetadataStorageProtocol):
+class SQLiteMetadataStorage(MetadataStorageBase):
     """
     Storage backend para metadata usando SQLite.
     """
@@ -62,7 +62,7 @@ class MetadataStorage(MetadataStorageProtocol):
             raise DFSMetadataError(f"Error inicializando storage: {e}")
 
     async def _create_tables(self) -> None:
-        """Crea las tablas necesarias"""
+        """Crea las tablas necesarias (ahora con campos extendidos para nodos)."""
         tables = [
             """
             CREATE TABLE IF NOT EXISTS files (
@@ -86,7 +86,13 @@ class MetadataStorage(MetadataStorageProtocol):
                 total_space INTEGER NOT NULL,
                 chunk_count INTEGER DEFAULT 0,
                 last_heartbeat TEXT NOT NULL,
-                state TEXT NOT NULL
+                state TEXT NOT NULL,
+                -- Nuevas columnas para registro automático / ZeroTier
+                zerotier_node_id TEXT,
+                zerotier_ip TEXT,
+                lease_ttl INTEGER DEFAULT 60,
+                boot_token TEXT,
+                version TEXT
             )
             """,
             """
@@ -117,6 +123,35 @@ class MetadataStorage(MetadataStorageProtocol):
             conn.execute(index_sql)
 
         conn.commit()
+
+        # Ejecutar migración ligera: si la tabla nodes existía sin las columnas nuevas,
+        # las agregamos con ALTER TABLE (SQLite permite ADD COLUMN).
+        self._migrate_node_table_if_needed()
+
+    def _migrate_node_table_if_needed(self) -> None:
+        """
+        Añade columnas a la tabla nodes si faltan (migración segura para DB existentes).
+        Esto se ejecuta después de crear tablas.
+        """
+        conn = self._conn
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(nodes)")
+        existing = [row["name"] for row in cur.fetchall()]
+
+        # Lista de (column_sql, column_name) para agregar si falta
+        needed = [
+            ("zerotier_node_id TEXT", "zerotier_node_id"),
+            ("zerotier_ip TEXT", "zerotier_ip"),
+            ("lease_ttl INTEGER DEFAULT 60", "lease_ttl"),
+            ("boot_token TEXT", "boot_token"),
+            ("version TEXT", "version"),
+        ]
+        for col_sql, col_name in needed:
+            if col_name not in existing:
+                logger.info("Migración: agregando columna %s a nodes", col_name)
+                conn.execute(f"ALTER TABLE nodes ADD COLUMN {col_sql}")
+        conn.commit()
+
 
     async def close(self) -> None:
         """Cierra la conexión"""
@@ -311,14 +346,140 @@ class MetadataStorage(MetadataStorageProtocol):
             except Exception as e:
                 logger.error(f"Error eliminando archivo {path}: {e}")
                 return False
+    
+    async def register_node(
+        self,
+        node_id: str,
+        zerotier_node_id: Optional[str],
+        zerotier_ip: str,
+        listening_ports: Optional[dict] = None,
+        capacity_gb: Optional[float] = None,
+        version: Optional[str] = None,
+        lease_ttl: Optional[int] = None,
+        boot_token: Optional[str] = None,
+        rack: Optional[str] = None,
+    ) -> None:
+        """
+        Inserta o actualiza la fila de 'nodes' cuando un nodo se registra por primera vez.
+        - node_id: id del nodo (UUID o string persistente)
+        - zerotier_node_id: member id de ZeroTier (opcional)
+        - zerotier_ip: IP asignada por ZeroTier (string)
+        - listening_ports: dict con puertos, ej. {"storage":8001}
+        - capacity_gb: capacidad total reportada por el nodo
+        - version: versión del agente
+        - lease_ttl: ttl para heartbeats (opcional)
+        - boot_token: token de bootstrap usado (si quieres guardarlo)
+        - rack: etiqueta física/ lógica (opcional)
+        """
+        async with self.lock:
+            now = datetime.now(timezone.utc)
+            conn = self._conn
+
+            # Determine host/port from provided data: prefer zerotier_ip and storage port
+            host = zerotier_ip or "unknown"
+            port = 8001
+            if listening_ports and isinstance(listening_ports, dict):
+                try:
+                    port = int(listening_ports.get("storage", port))
+                except Exception:
+                    port = port
+
+            # Normalize capacity fields
+            total_space = int((capacity_gb or 0) * (1024**3)) if capacity_gb is not None else 0
+            free_space = total_space  # al registro inicial asumimos libre = total o 0 según preferencia
+            # Intentamos detectar si ya existe
+            row = conn.execute("SELECT node_id FROM nodes WHERE node_id = ?", (node_id,)).fetchone()
+
+            if row:
+                # Update existing
+                conn.execute(
+                    """
+                    UPDATE nodes SET
+                        zerotier_node_id = ?,
+                        zerotier_ip = ?,
+                        host = ?,
+                        port = ?,
+                        rack = ?,
+                        total_space = ?,
+                        free_space = ?,
+                        version = ?,
+                        boot_token = ?,
+                        lease_ttl = ?,
+                        last_heartbeat = ?,
+                        state = ?
+                    WHERE node_id = ?
+                    """,
+                    (
+                        zerotier_node_id,
+                        zerotier_ip,
+                        host,
+                        port,
+                        rack,
+                        total_space,
+                        free_space,
+                        version,
+                        boot_token,
+                        int(lease_ttl) if lease_ttl is not None else getattr(config, "lease_ttl", 60),
+                        now.isoformat(),
+                        NodeState.ACTIVE.value,
+                        node_id,
+                    ),
+                )
+            else:
+                # Insert new
+                conn.execute(
+                    """
+                    INSERT INTO nodes
+                    (node_id, zerotier_node_id, zerotier_ip, host, port, rack, free_space, total_space, chunk_count, last_heartbeat, state, lease_ttl, version, boot_token)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        node_id,
+                        zerotier_node_id,
+                        zerotier_ip,
+                        host,
+                        port,
+                        rack,
+                        free_space,
+                        total_space,
+                        0,
+                        now.isoformat(),
+                        NodeState.ACTIVE.value,
+                        int(lease_ttl) if lease_ttl is not None else getattr(config, "lease_ttl", 60),
+                        version,
+                        boot_token,
+                    ),
+                )
+
+            # After register, optionally mark stale nodes as INACTIVE by heartbeat threshold (existing logic)
+            threshold = now - timedelta(seconds=config.node_timeout)
+            conn.execute(
+                "UPDATE nodes SET state = ? WHERE last_heartbeat < ?",
+                (NodeState.INACTIVE.value, threshold.isoformat()),
+            )
+
+            conn.commit()
+            logger.info("Node registrado/actualizado: %s (%s)", node_id, zerotier_ip)
+
 
     async def update_node_heartbeat(
-        self, node_id: str, free_space: int, total_space: int, chunk_ids: List[UUID]
+        self, 
+        node_id: str, 
+        free_space: int, 
+        total_space: int, 
+        chunk_ids: List[UUID],
+        zerotier_ip: Optional[str] = None,
+        zerotier_node_id: Optional[str] = None,
+        url: Optional[str] = None,
     ) -> None:
-        """Actualiza heartbeat de un nodo"""
+        """Actualiza heartbeat de un nodo con información adicional de ZeroTier"""
         async with self.lock:
             now = datetime.now(timezone.utc)
             threshold = now - timedelta(seconds=config.node_timeout)
+
+            logger.info(f"Heartbeat de {node_id}: reportando {len(chunk_ids)} chunks")
+            if len(chunk_ids) > 0:
+                logger.debug(f"Chunks reportados: {[str(c) for c in chunk_ids[:5]]}{'...' if len(chunk_ids) > 5 else ''}")
 
             conn = self._conn
             # Verifica si el nodo existe
@@ -327,37 +488,75 @@ class MetadataStorage(MetadataStorageProtocol):
             ).fetchone()
 
             if row:
-                # Actualiza un nodo existente
-                conn.execute(
-                    """
-                    UPDATE nodes 
-                    SET free_space = ?, total_space = ?, chunk_count = ?, 
-                        last_heartbeat = ?, state = ?
-                    WHERE node_id = ?
-                    """,
-                    (
-                        free_space,
-                        total_space,
-                        len(chunk_ids),
-                        now.isoformat(),
-                        NodeState.ACTIVE.value,
-                        node_id,
-                    ),
-                )
+                # Preparar campos para actualización
+                update_fields = [
+                    "free_space = ?",
+                    "total_space = ?",
+                    "chunk_count = ?",
+                    "last_heartbeat = ?",
+                    "state = ?"
+                ]
+                update_values = [
+                    free_space,
+                    total_space,
+                    len(chunk_ids),
+                    now.isoformat(),
+                    NodeState.ACTIVE.value,
+                ]
+                
+                # Agregar campos opcionales si están presentes
+                # SIEMPRE actualizar host si hay zerotier_ip válida
+                if zerotier_ip and zerotier_ip.strip() and zerotier_ip != "0.0.0.0":
+                    update_fields.append("zerotier_ip = ?")
+                    update_values.append(zerotier_ip)
+                    update_fields.append("host = ?")
+                    update_values.append(zerotier_ip)
+                    logger.info(f"Actualizando host de {node_id} a {zerotier_ip}")
+                else:
+                    logger.debug(f"Heartbeat sin ZeroTier IP válida para {node_id}")
+                
+                if zerotier_node_id and zerotier_node_id.strip():
+                    update_fields.append("zerotier_node_id = ?")
+                    update_values.append(zerotier_node_id)
+                
+                if url:
+                    # Extraer puerto de la URL si está presente
+                    try:
+                        port_from_url = int(url.split(":")[-1].split("/")[0])
+                        update_fields.append("port = ?")
+                        update_values.append(port_from_url)
+                    except (ValueError, IndexError):
+                        pass
+                
+                update_values.append(node_id)
+                
+                query = f"UPDATE nodes SET {', '.join(update_fields)} WHERE node_id = ?"
+                conn.execute(query, tuple(update_values))
+                
             else:
                 # Inserta un nuevo nodo
-                host, port = self._parse_node_id(node_id)
+                host = zerotier_ip if zerotier_ip else "0.0.0.0"
+                port = 8001  # Puerto por defecto
+                
+                # Intentar extraer puerto de la URL
+                if url:
+                    try:
+                        port = int(url.split(":")[-1].split("/")[0])
+                    except (ValueError, IndexError):
+                        pass
 
                 conn.execute(
                     """
                     INSERT INTO nodes 
-                    (node_id, host, port, free_space, total_space, chunk_count, last_heartbeat, state)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (node_id, host, port, zerotier_ip, zerotier_node_id, free_space, total_space, chunk_count, last_heartbeat, state)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         node_id,
                         host,
                         port,
+                        zerotier_ip,
+                        zerotier_node_id,
                         free_space,
                         total_space,
                         len(chunk_ids),
@@ -372,8 +571,100 @@ class MetadataStorage(MetadataStorageProtocol):
                 (NodeState.INACTIVE.value, threshold.isoformat()),
             )
 
+            # Actualizar réplicas basadas en los chunks reportados
+            if chunk_ids:
+                await self._update_replicas_from_heartbeat(node_id, chunk_ids, url or f"http://{zerotier_ip or '0.0.0.0'}:{8001}")
+
             conn.commit()
-            logger.debug(f"Heartbeat actualizado: {node_id}")
+            logger.debug(f"Heartbeat actualizado: {node_id} (ZT IP: {zerotier_ip})")
+    
+    async def _update_replicas_from_heartbeat(self, node_id: str, chunk_ids: List[UUID], node_url: str) -> None:
+        """
+        Actualiza las réplicas de los chunks basándose en lo reportado por el heartbeat.
+        Este método es la "fuente de verdad" - sincroniza el estado real del nodo:
+        - Marca como committed los chunks que el nodo SÍ tiene
+        - ELIMINA las réplicas de chunks que el nodo YA NO tiene
+        """
+        conn = self._conn
+        
+        # Obtener todos los archivos que no están eliminados
+        rows = conn.execute(
+            "SELECT file_id, chunks_json FROM files WHERE is_deleted = 0"
+        ).fetchall()
+        
+        chunk_ids_str = {str(c) for c in chunk_ids}
+        updated_files = 0
+        replicas_added = 0
+        replicas_removed = 0
+        
+        for row in rows:
+            file_id = row["file_id"]
+            chunks_data = json.loads(row["chunks_json"])
+            file_modified = False
+            
+            for chunk in chunks_data:
+                chunk_id = chunk.get("chunk_id")
+                replicas = chunk.get("replicas", [])
+                
+                # Si este nodo reporta tener este chunk
+                if chunk_id in chunk_ids_str:
+                    # Buscar si ya existe una réplica para este nodo
+                    replica_exists = False
+                    for replica in replicas:
+                        if replica.get("node_id") == node_id:
+                            # Actualizar réplica existente
+                            if replica.get("state") != "committed":
+                                replica["state"] = "committed"
+                                file_modified = True
+                            if replica.get("url") != node_url:
+                                replica["url"] = node_url
+                                file_modified = True
+                            replica_exists = True
+                            break
+                    
+                    # Si no existe, agregarla
+                    if not replica_exists:
+                        replicas.append({
+                            "node_id": node_id,
+                            "url": node_url,
+                            "state": "committed",
+                            "checksum_verified": False
+                        })
+                        chunk["replicas"] = replicas
+                        file_modified = True
+                        replicas_added += 1
+                        logger.debug(f"Agregada réplica de chunk {chunk_id} en nodo {node_id}")
+                
+                else:
+                    # El nodo NO reporta tener este chunk
+                    # Eliminar la réplica si existía (el nodo ya no tiene el chunk)
+                    original_count = len(replicas)
+                    replicas = [r for r in replicas if r.get("node_id") != node_id]
+                    
+                    if len(replicas) < original_count:
+                        chunk["replicas"] = replicas
+                        file_modified = True
+                        replicas_removed += 1
+                        logger.warning(
+                            f"ELIMINADA réplica de chunk {chunk_id} de nodo {node_id} "
+                            f"(no reportada en heartbeat - posible pérdida de datos)"
+                        )
+            
+            # Actualizar el archivo si se modificó
+            if file_modified:
+                conn.execute(
+                    "UPDATE files SET chunks_json = ?, modified_at = ? WHERE file_id = ?",
+                    (json.dumps(chunks_data), datetime.now(timezone.utc).isoformat(), file_id)
+                )
+                updated_files += 1
+        
+        if updated_files > 0 or replicas_added > 0 or replicas_removed > 0:
+            logger.info(
+                f"Sincronización de réplicas desde heartbeat de {node_id}: "
+                f"{updated_files} archivos actualizados, "
+                f"+{replicas_added} réplicas agregadas, "
+                f"-{replicas_removed} réplicas eliminadas"
+            )
 
     async def get_node(self, node_id: str) -> Optional[NodeInfo]:
         """Obtiene información de un nodo"""
@@ -494,9 +785,13 @@ class MetadataStorage(MetadataStorageProtocol):
 
     def _row_to_node_info(self, row) -> NodeInfo:
         """Convierte una fila de la BD a NodeInfo"""
+        # Preferir zerotier_ip sobre host si está disponible
+        row = dict(row)
+        host = row.get("zerotier_ip") or row["host"]
+        
         return NodeInfo(
             node_id=row["node_id"],
-            host=row["host"],
+            host=host,  # Usar ZeroTier IP si está disponible
             port=row["port"],
             rack=row["rack"],
             free_space=row["free_space"],

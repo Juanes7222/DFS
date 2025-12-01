@@ -54,3 +54,7 @@ class DFSConfigurationError(DFSError):
     """Error de configuración"""
 
     pass
+
+class RegistrationError(DFSError):
+    """Error personalizado para fallos de registro."""
+    pass

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Dict
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, ConfigDict
@@ -138,6 +138,9 @@ class HeartbeatRequest(BaseModel):
     free_space: int
     total_space: int
     chunk_ids: List[UUID]
+    url: Optional[str] = None  # URL pública del DataNode
+    zerotier_ip: Optional[str] = None  # IP de ZeroTier
+    zerotier_node_id: Optional[str] = None  # ID del nodo en ZeroTier
 
 
 class LeaseRequest(BaseModel):
@@ -184,3 +187,14 @@ class SystemStats(BaseModel):
     used_space: int
     free_space: int
     replication_factor: int
+
+class RegisterRequest(BaseModel):
+    node_id: str = Field(..., description="UUID persistente del nodo")
+    zerotier_node_id: Optional[str] = Field(None, description="ZeroTier member id (opcional)")
+    zerotier_ip: Optional[str] = Field(None, description="IP asignada por ZeroTier (opcional)")
+    listening_ports: Optional[Dict[str,int]] = {}
+    data_port: Optional[int] = Field(None, description="Puerto donde el DataNode sirve chunks (opcional)")
+    capacity_gb: Optional[float] = None
+    version: Optional[str] = None
+    bootstrap_token: Optional[str] = Field(None, description="Token de bootstrap (puede ir en body o en header)")
+    lease_ttl: Optional[int] = None

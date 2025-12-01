@@ -15,7 +15,8 @@ from core.config import config
 from core.exceptions import DFSStorageError
 from datanode.storage import ChunkStorage
 from datanode.heartbeat import HeartbeatManager
-from monitoring.metrics import metrics_endpoint, MetricsMiddleware
+import datanode.agent as agent
+# from monitoring.metrics import metrics_endpoint, MetricsMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +26,23 @@ class DataNodeServer:
 
     def __init__(self, node_id: Optional[str] = None, port: Optional[int] = None):
         self.port = port or config.datanode_port
-        self.node_id = (
-            node_id or f"node-{config.datanode_host}-{self.port}"
-        )
+        
+        # Usar node_id persistente si se proporciona, sino generarlo
+        if node_id:
+            self.node_id = node_id
+        else:
+            # Intentar obtener un node_id persistente del agent (usando el puerto para diferenciación)
+            try:
+                from datanode.agent import get_node_id
+                self.node_id = get_node_id(port=self.port)
+                logger.info(f"Usando node_id persistente: {self.node_id} para puerto {self.port}")
+            except Exception as e:
+                logger.warning(f"No se pudo obtener node_id persistente: {e}")
+                # Fallback temporal con puerto para garantizar unicidad
+                import uuid
+                self.node_id = f"{uuid.uuid4()}-{self.port}"
+                logger.warning(f"Generando node_id temporal: {self.node_id}")
+        
         self.storage_path = config.storage_path / self.node_id
 
         self.storage: Optional[ChunkStorage] = None
@@ -69,7 +84,7 @@ class DataNodeServer:
         )
 
         # Metrics Middleware
-        app.add_middleware(MetricsMiddleware)
+        # app.add_middleware(MetricsMiddleware)
 
         @app.put(
             "/api/v1/chunks/{chunk_id}",
@@ -120,6 +135,7 @@ class DataNodeServer:
         @app.get("/api/v1/chunks/{chunk_id}")
         async def get_chunk(chunk_id: UUID):
             """Recupera un chunk."""
+            logger.info(f"Petición de chunk {chunk_id} recibida")
             if not self.storage:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -127,6 +143,7 @@ class DataNodeServer:
                 )
 
             try:
+                logger.info(f"Recuperando chunk {chunk_id}")
                 chunk_data, checksum = await self.storage.retrieve_chunk(chunk_id)
 
                 async def chunk_generator():
@@ -175,7 +192,8 @@ class DataNodeServer:
         @app.get("/metrics")
         async def metrics():
             """Endpoint de métricas."""
-            return metrics_endpoint()
+            # return metrics_endpoint()
+            return {"message": "Metrics endpoint placeholder"}
 
         return app
 
@@ -184,17 +202,41 @@ class DataNodeServer:
         logger.info(f"Iniciando DataNode {self.node_id} en puerto {self.port}")
 
         try:
+            # Obtener ZeroTier IP si está disponible
+            zerotier_ip = None
+            zerotier_node_id = None
+            
+            try:
+                from datanode.agent import get_zerotier_ip, get_zerotier_node_id_from_cli
+                zerotier_ip = get_zerotier_ip()
+                if zerotier_ip:
+                    logger.info(f"ZeroTier IP detectada: {zerotier_ip}")
+                    try:
+                        zerotier_node_id = get_zerotier_node_id_from_cli()
+                        if zerotier_node_id:
+                            logger.info(f"ZeroTier Node ID: {zerotier_node_id}")
+                    except Exception as e:
+                        logger.warning(f"No se pudo obtener ZeroTier Node ID: {e}")
+                else:
+                    logger.warning("No se detectó IP de ZeroTier, usando configuración local")
+            except ImportError:
+                logger.warning("Módulo agent no disponible, continuando sin ZeroTier")
+            except Exception as e:
+                logger.warning(f"Error obteniendo ZeroTier info: {e}")
+            
             # Inicializar storage
             self.storage = ChunkStorage(self.storage_path)
             await self.storage.initialize()
             logger.info("Storage inicializado correctamente")
 
-            # Iniciar heartbeat
+            # Iniciar heartbeat con información de ZeroTier
             self.heartbeat_manager = HeartbeatManager(
                 node_id=self.node_id,
                 storage=self.storage,
                 metadata_url=config.metadata_url,
-                port=self.port
+                port=self.port,
+                zerotier_ip=zerotier_ip,
+                zerotier_node_id=zerotier_node_id
             )
             await self.heartbeat_manager.start()
             logger.info("Heartbeat manager iniciado correctamente")

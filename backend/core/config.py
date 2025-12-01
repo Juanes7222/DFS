@@ -1,9 +1,12 @@
 import os
+import secrets
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List
-
-
+from dotenv import load_dotenv
+import logging
+logger = logging.getLogger(__name__)
+load_dotenv()
 @dataclass
 class DFSConfig:
     """Configuración centralizada del sistema DFS"""
@@ -20,6 +23,9 @@ class DFSConfig:
     # Configuración de Chunk
     chunk_size: int = int(os.getenv("DFS_CHUNK_SIZE", "67108864"))  # 64MB
     replication_factor: int = int(os.getenv("DFS_REPLICATION_FACTOR", "3"))
+    
+    # Replicación
+    enable_rebalancing: bool = os.getenv("DFS_ENABLE_REBALANCING", "false").lower() == "true"
 
     # Timeouts
     client_timeout: float = float(os.getenv("DFS_CLIENT_TIMEOUT", "30.0"))
@@ -30,7 +36,11 @@ class DFSConfig:
     db_path: Path = Path(os.getenv("DFS_DB_PATH", "/tmp/dfs-metadata.db"))
 
     # Security
-    jwt_secret_key: str = os.getenv("DFS_JWT_SECRET_KEY", "CHANGE-ME-IN-PRODUCTION")
+    jwt_secret_key: str | None = os.getenv("DFS_JWT_SECRET_KEY")
+    if jwt_secret_key is None:
+        jwt_secret_key = secrets.token_hex(32)
+        logger.warning("JWT_SECRET_KEY no está configurado. Se generó una clave temporal.")
+    
     enable_mtls: bool = os.getenv("DFS_ENABLE_MTLS", "false").lower() == "true"
 
     # Monitoring
@@ -46,15 +56,32 @@ class DFSConfig:
     # CORS - Orígenes permitidos
     cors_origins: List[str] = field(default_factory=lambda: os.getenv(
         "CORS_ORIGINS",
-        "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
+        "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173",
     ).split(","))
     
     # Permitir todos los orígenes en desarrollo (usar con cuidado)
     cors_allow_all: bool = os.getenv("CORS_ALLOW_ALL", "false").lower() == "true"
+    
+    # Parámetros para registro automático de nodos
+    bootstrap_token = os.getenv("INITIAL_BOOTSTRAP_TOKEN", "")  # lista de tokens válidos (puedes cargar desde archivo/env)
+    allow_open_registration = False  # si True permite registro sin token (solo pruebas)
+    lease_ttl = 60  # segundos
+    nodes_db_path = "./temp/nodes.db"  # en Windows: "C:\\ProgramData\\dfs\\nodes.db"
+    zerotier_api_token = os.getenv("ZEROTIER_API_TOKEN", None)  # opcional para autorizar members automáticamente
+    zerotier_network_id = os.getenv("ZEROTIER_NETWORK_ID", None)
+    zerotier_ip_prefix = "100."  # opcional: prefix para validar IPs que vienen por ZeroTier (ej. "100." o "10.147.")
+    replication_factor = int(os.getenv("DFS_REPLICATION_FACTOR", "3"))
+    data_port = int(os.getenv("DATA_PORT", "5001"))
+    
+    backend_storage_type: str = os.getenv("BACKEND_STORAGE_TYPE", "sqlite").lower()  # "sqlite" o "postgres"
+    postgres_url: str = os.getenv("POSTGRES_URL", "postgresql://user:password@localhost:5432/dfs_metadata")
 
     @property
     def metadata_url(self) -> str:
-        return f"http://{self.metadata_host}:{self.metadata_port}"
+        if os.getenv("DEBUG_MODE", "false").lower() == "true":
+            return f"http://{self.metadata_host}:{self.metadata_port}"
+        else:
+            return self.metadata_host
 
     @property
     def datanode_url(self) -> str:
