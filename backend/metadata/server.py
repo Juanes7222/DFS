@@ -145,6 +145,12 @@ async def lifespan(app: FastAPI):
     logger.info(f"Storage: {context.get_storage() is not None}")
     logger.info(f"Replicator: {context.get_replicator() is not None}")
     logger.info(f"Lease Manager: {context.get_lease_manager() is not None}")
+    logger.info("DFS Metadata Service")
+    logger.info(f"Host: {config.metadata_host}")
+    logger.info(f"Port: {config.metadata_port}")
+    logger.info(f"Replication Factor: {config.replication_factor}")
+    logger.info(f"Chunk Size: {config.chunk_size} bytes")
+    logger.info(f"Database: {config.db_path}")
 
     try:
         yield
@@ -196,13 +202,6 @@ async def health_check():
 def main():
     """Función principal para ejecutar el servidor"""
     import uvicorn
-
-    logger.info("DFS Metadata Service")
-    logger.info(f"Host: {config.metadata_host}")
-    logger.info(f"Port: {config.metadata_port}")
-    logger.info(f"Replication Factor: {config.replication_factor}")
-    logger.info(f"Chunk Size: {config.chunk_size} bytes")
-    logger.info(f"Database: {config.db_path}")
 
     uvicorn.run(
         app,
