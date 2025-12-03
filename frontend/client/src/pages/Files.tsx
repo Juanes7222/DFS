@@ -232,7 +232,7 @@ export default function Files() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Ruta</TableHead>
-                        <TableHead>Formato</TableHead> {/* nueva columna */}
+                        <TableHead>Formato</TableHead>
                         <TableHead>Tamaño</TableHead>
                         <TableHead>Chunks</TableHead>
                         <TableHead>Creado</TableHead>

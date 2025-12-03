@@ -17,6 +17,12 @@ from shared import (
     format_bytes,
 )
 
+
+logging.basicConfig(
+    level=getattr(logging, config.log_level.upper()),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -251,12 +257,17 @@ async def delete_file(
         # Adquirir lease para operación de eliminación
         lease = None
         if lease_mgr:
+            logger.info(f"Acquiring lease for delete operation: {decoded_path}")
             lease = await lease_mgr.acquire_lease(
                 path=decoded_path, operation="delete", timeout_seconds=300
             )
+            logger.info(f"Lease acquired: {lease}")
 
         try:
+            logger.info(f"Calling storage.delete_file for: {decoded_path}, permanent={permanent}")
             success = await storage.delete_file(decoded_path, permanent=permanent)
+            logger.info(f"storage.delete_file returned: {success} for path: {decoded_path}")
+            
             if not success:
                 logger.warning(f"Storage returned False for delete: {decoded_path}")
                 raise HTTPException(
@@ -281,13 +292,16 @@ async def delete_file(
         finally:
             # Libera lease
             if lease and lease_mgr:
+                logger.info(f"Releasing lease for: {decoded_path}")
                 await lease_mgr.release_lease(lease.lease_id, decoded_path)
+                logger.info(f"Lease released for: {decoded_path}")
 
-    except HTTPException:
+    except HTTPException as http_exc:
+        logger.warning(f"HTTPException during delete: {http_exc.status_code} - {http_exc.detail}")
         record_delete_operation(False)
         raise
     except Exception as e:
-        logger.error(f"Error eliminando archivo: {e}")
+        logger.error(f"Error eliminando archivo: {e}", exc_info=True)
         record_delete_operation(False)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

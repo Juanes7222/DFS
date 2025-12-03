@@ -22,6 +22,11 @@ from shared.models import (
 )
 from shared.protocols import MetadataStorageBase
 
+logging.basicConfig(
+    level=getattr(logging, config.log_level.upper()),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -300,16 +305,23 @@ class PostgresMetadataStorage(MetadataStorageBase):
 
     async def delete_file(self, path: str, permanent: bool = False) -> bool:
         """Elimina un archivo"""
+        logger.info(f"delete_file called - path: {path}, permanent: {permanent}")
+        
         async with self.lock:
             try:
+                logger.info(f"Acquired lock for delete operation: {path}")
                 async with self.pool.acquire() as conn:
+                    logger.info(f"Database connection acquired for: {path}")
+                    
                     if permanent:
                         # Eliminación permanente
+                        logger.info(f"Executing permanent DELETE for: {path}")
                         result = await conn.execute(
                             "DELETE FROM files WHERE path = $1", path
                         )
                     else:
                         # Soft delete
+                        logger.info(f"Executing soft delete UPDATE for: {path}")
                         now = datetime.now(timezone.utc)
                         result = await conn.execute(
                             """
@@ -321,14 +333,17 @@ class PostgresMetadataStorage(MetadataStorageBase):
                             path,
                         )
 
+                    logger.info(f"Query executed. Result: {result}")
+                    
                     # PostgreSQL devuelve algo como "UPDATE 1" o "DELETE 1"
                     # Extraemos el número de filas afectadas
                     rows_affected = 0
                     if result:
                         try:
                             rows_affected = int(result.split()[-1])
-                        except (ValueError, IndexError):
-                            logger.warning(f"No se pudo parsear resultado: {result}")
+                            logger.info(f"Parsed rows_affected: {rows_affected}")
+                        except (ValueError, IndexError) as parse_error:
+                            logger.warning(f"No se pudo parsear resultado: {result}, error: {parse_error}")
                     
                     success = rows_affected > 0
 
@@ -336,7 +351,7 @@ class PostgresMetadataStorage(MetadataStorageBase):
                         action = "eliminado permanentemente" if permanent else "marcado como eliminado"
                         logger.info(f"Archivo {action}: {path}")
                     else:
-                        logger.warning(f"Archivo no encontrado o ya eliminado: {path}")
+                        logger.warning(f"Archivo no encontrado o ya eliminado: {path}, rows_affected={rows_affected}")
 
                     return success
 
@@ -680,7 +695,7 @@ class PostgresMetadataStorage(MetadataStorageBase):
     ) -> Optional[LeaseResponse]:
         """Adquiere un lease"""
         async with self.lock:
-            await self.cleanup_expired_leases()
+            await self._cleanup_expired_leases_internal()
 
             now = datetime.now(timezone.utc)
 
@@ -728,17 +743,21 @@ class PostgresMetadataStorage(MetadataStorageBase):
                 return success
 
     async def cleanup_expired_leases(self) -> None:
-        """Limpia leases expirados"""
+        """Limpia leases expirados (API pública con lock)"""
         async with self.lock:
-            now = datetime.now(timezone.utc)
-            async with self.pool.acquire() as conn:
-                result = await conn.execute(
-                    "DELETE FROM leases WHERE expires_at <= $1", now
-                )
+            await self._cleanup_expired_leases_internal()
 
-                count = result.split()[-1]
-                if count != "0":
-                    logger.debug(f"Limpiados {count} leases expirados")
+    async def _cleanup_expired_leases_internal(self) -> None:
+        """Limpia leases expirados (versión interna sin lock)"""
+        now = datetime.now(timezone.utc)
+        async with self.pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM leases WHERE expires_at <= $1", now
+            )
+
+            count = result.split()[-1]
+            if count != "0":
+                logger.debug(f"Limpiados {count} leases expirados")
 
     async def get_system_stats(self) -> dict:
         """Obtiene estadísticas del sistema"""

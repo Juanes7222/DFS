@@ -54,10 +54,10 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
           return (
             <Link key={item.href} href={item.href}>
-              <a
+              <div
                 onClick={onNavigate}
                 className={cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
+                  "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors cursor-pointer",
                   "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                   isActive
                     ? "bg-primary text-primary-foreground"
@@ -66,7 +66,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               >
                 <Icon className="h-5 w-5 flex-shrink-0" />
                 <span className="font-medium">{item.title}</span>
-              </a>
+              </div>
             </Link>
           );
         })}
