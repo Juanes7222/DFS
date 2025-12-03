@@ -181,16 +181,19 @@ async def commit_upload(request: CommitRequest):
 @router.get("/files/{path:path}", response_model=FileMetadata)
 async def get_file_metadata(path: str):
     """Obtiene metadata de un archivo"""
-    logger.debug(f"Get file metadata: {path}")
+    from urllib.parse import unquote
+    decoded_path = unquote(path)
+    
+    logger.debug(f"Get file metadata - Original: {path}, Decoded: {decoded_path}")
 
     storage = get_storage()
 
     try:
-        file_metadata = await storage.get_file_by_path(path)
+        file_metadata = await storage.get_file_by_path(decoded_path)
         if not file_metadata:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Archivo no encontrado: {path}",
+                detail=f"Archivo no encontrado: {decoded_path}",
             )
 
         record_download_operation(True)
@@ -235,7 +238,11 @@ async def delete_file(
     path: str, permanent: bool = Query(False, description="Eliminar permanentemente")
 ):
     """Elimina un archivo (soft-delete por default)"""
-    logger.info(f"elete file: {path}, permanent={permanent}")
+    # Decodificar el path en caso de que venga URL-encoded
+    from urllib.parse import unquote
+    decoded_path = unquote(path)
+    
+    logger.info(f"Delete file request - Original: {path}, Decoded: {decoded_path}, permanent={permanent}")
 
     storage = get_storage()
     lease_mgr = get_lease_manager()
@@ -245,15 +252,16 @@ async def delete_file(
         lease = None
         if lease_mgr:
             lease = await lease_mgr.acquire_lease(
-                path=path, operation="delete", timeout_seconds=300
+                path=decoded_path, operation="delete", timeout_seconds=300
             )
 
         try:
-            success = await storage.delete_file(path, permanent=permanent)
+            success = await storage.delete_file(decoded_path, permanent=permanent)
             if not success:
+                logger.warning(f"Storage returned False for delete: {decoded_path}")
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Archivo no encontrado: {path}",
+                    detail=f"Archivo no encontrado: {decoded_path}",
                 )
 
             record_delete_operation(True)
@@ -261,11 +269,11 @@ async def delete_file(
             action = (
                 "eliminado permanentemente" if permanent else "marcado como eliminado"
             )
-            logger.info(f"Archivo {action}: {path}")
+            logger.info(f"Archivo {action}: {decoded_path}")
 
             return {
                 "status": "deleted",
-                "path": path,
+                "path": decoded_path,
                 "permanent": permanent,
                 "action": action,
             }
@@ -273,7 +281,7 @@ async def delete_file(
         finally:
             # Libera lease
             if lease and lease_mgr:
-                await lease_mgr.release_lease(lease.lease_id, path)
+                await lease_mgr.release_lease(lease.lease_id, decoded_path)
 
     except HTTPException:
         record_delete_operation(False)

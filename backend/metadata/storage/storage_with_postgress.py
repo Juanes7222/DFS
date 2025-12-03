@@ -304,10 +304,12 @@ class PostgresMetadataStorage(MetadataStorageBase):
             try:
                 async with self.pool.acquire() as conn:
                     if permanent:
+                        # Eliminación permanente
                         result = await conn.execute(
                             "DELETE FROM files WHERE path = $1", path
                         )
                     else:
+                        # Soft delete
                         now = datetime.now(timezone.utc)
                         result = await conn.execute(
                             """
@@ -319,16 +321,27 @@ class PostgresMetadataStorage(MetadataStorageBase):
                             path,
                         )
 
-                    success = result.split()[-1] != "0"
+                    # PostgreSQL devuelve algo como "UPDATE 1" o "DELETE 1"
+                    # Extraemos el número de filas afectadas
+                    rows_affected = 0
+                    if result:
+                        try:
+                            rows_affected = int(result.split()[-1])
+                        except (ValueError, IndexError):
+                            logger.warning(f"No se pudo parsear resultado: {result}")
+                    
+                    success = rows_affected > 0
 
                     if success:
-                        action = "eliminado" if permanent else "marcado como eliminado"
+                        action = "eliminado permanentemente" if permanent else "marcado como eliminado"
                         logger.info(f"Archivo {action}: {path}")
+                    else:
+                        logger.warning(f"Archivo no encontrado o ya eliminado: {path}")
 
                     return success
 
             except Exception as e:
-                logger.error(f"Error eliminando archivo {path}: {e}")
+                logger.error(f"Error eliminando archivo {path}: {e}", exc_info=True)
                 return False
 
     async def register_node(
