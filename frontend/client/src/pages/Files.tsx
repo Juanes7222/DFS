@@ -128,7 +128,7 @@ export default function Files() {
       setSelectedFile(null);
       setRemotePath("");
       setUploadProgress(0);
-      loadFiles();
+      loadFiles(); // Metadata siempre se consulta fresca
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al subir el archivo");
     } finally {
@@ -166,7 +166,7 @@ export default function Files() {
     try {
       await api.deleteFile(file.path, false);
       toast.success("Archivo eliminado");
-      loadFiles();
+      loadFiles(); // Metadata siempre se consulta fresca
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al borrar el archivo");
     }

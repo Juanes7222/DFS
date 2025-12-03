@@ -12,6 +12,9 @@ const INITIAL_RETRY_DELAY = 1000; // 1 segundo
 const FETCH_TIMEOUT = 120000; // 2 minutos por chunk (para redes lentas/VPN)
 
 // Cache configuration
+// IMPORTANTE: Solo se cachean los BLOBS (archivos descargados) para previews rápidos
+// La METADATA (FileMetadata) NUNCA se cachea - siempre se consulta fresca
+// Razón: La metadata cambia constantemente (heartbeats, réplicas, replicación)
 const CACHE_VERSION = "v1";
 const CACHE_TTL = 8 * 60 * 1000; // 8 minutos
 const CACHE_KEY_PREFIX = `dfs_cache_${CACHE_VERSION}_`;
@@ -248,42 +251,24 @@ class APIService {
 
   // Files
   async listFiles(prefix?: string): Promise<FileMetadata[]> {
-    const cacheKey = `files_list_${prefix || 'all'}`;
-    
-    // Check cache first
-    const cached = metadataCache.get<FileMetadata[]>(cacheKey);
-    if (cached) {
-      console.log(`Cache hit: ${cacheKey}`);
-      return cached;
-    }
-
+    // Siempre consultar metadata fresca - no usar caché
+    // La metadata cambia frecuentemente (heartbeats, replicación, etc.)
     const params = prefix ? `?prefix=${encodeURIComponent(prefix)}` : "";
     const files = await this.request<FileMetadata[]>(`/api/v1/files${params}`);
     
-    // Store in cache
-    metadataCache.set(cacheKey, files);
-    console.log(`Cache stored: ${cacheKey} (${files.length} files)`);
+    console.log(`Files metadata loaded: ${files.length} files`);
     
     return files;
   }
 
   async getFile(path: string): Promise<FileMetadata> {
-    const cacheKey = `file_${path}`;
-    
-    // Check cache first
-    const cached = metadataCache.get<FileMetadata>(cacheKey);
-    if (cached) {
-      console.log(`Cache hit: ${cacheKey}`);
-      return cached;
-    }
-
+    // Siempre consultar metadata fresca - no usar caché
+    // La metadata cambia frecuentemente (heartbeats, replicación, etc.)
     const file = await this.request<FileMetadata>(
       `/api/v1/files/${encodeURIComponent(path)}`
     );
     
-    // Store in cache
-    metadataCache.set(cacheKey, file);
-    console.log(`Cache stored: ${cacheKey}`);
+    console.log(`File metadata loaded: ${path}`);
     
     return file;
   }
@@ -296,11 +281,9 @@ class APIService {
       }
     );
     
-    // Invalidate cache
-    metadataCache.invalidate(`file_${path}`);
+    // Solo invalidar blob cache (metadata siempre se consulta fresca)
     metadataCache.invalidate(`blob_${path}`);
-    metadataCache.invalidatePattern(`files_list_`);
-    console.log(`Cache invalidated: file_${path}, blob and all lists`);
+    console.log(`File deleted, blob cache invalidated: ${path}`);
   }
 
   // En api.ts - Upload via Proxy
@@ -446,11 +429,7 @@ class APIService {
       }),
     });
     
-    // Invalidate cache after successful upload
-    metadataCache.invalidate(`file_${remotePath}`);
-    metadataCache.invalidate(`blob_${remotePath}`);
-    metadataCache.invalidatePattern(`files_list_`);
-    console.log(`Cache invalidated: file_${remotePath}, blob and all lists`);
+    console.log(`File uploaded successfully: ${remotePath}`);
   }
 
   async downloadFile(
@@ -461,7 +440,7 @@ class APIService {
     const cacheKey = `blob_${path}`;
     const cachedBlob = metadataCache.get<Blob>(cacheKey);
     if (cachedBlob) {
-      console.log(`💾 Blob cache hit: ${path}`);
+      console.log(`Blob cache hit: ${path}`);
       if (onProgress) onProgress(100);
       return cachedBlob;
     }
