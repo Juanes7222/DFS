@@ -8,17 +8,64 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000; // 1 segundo
 
-// Timeout configuration (más generosos para ZeroTier)
+// Timeout configuration
 const FETCH_TIMEOUT = 120000; // 2 minutos por chunk (para redes lentas/VPN)
 
 // Cache configuration
 const CACHE_VERSION = "v1";
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+const CACHE_TTL = 8 * 60 * 1000; // 8 minutos
 const CACHE_KEY_PREFIX = `dfs_cache_${CACHE_VERSION}_`;
 
-/**
- * Caché simple de metadata en memoria con TTL
- */
+// Compression configuration
+const COMPRESSION_ENABLED = true;
+const COMPRESSIBLE_EXTENSIONS = [
+  'txt', 'csv', 'json', 'xml', 'html', 'css', 'js', 'ts', 'jsx', 'tsx',
+  'md', 'log', 'yaml', 'yml', 'sql', 'py', 'java', 'c', 'cpp', 'h',
+  'go', 'rs', 'rb', 'php', 'sh', 'bat', 'ps1', 'svg', 'ini', 'conf',
+  'properties', 'toml', 'gradle', 'cmake', 'dockerfile'
+];
+
+// Streaming configuration - archivos que se benefician de carga progresiva
+const STREAMABLE_EXTENSIONS = [
+  'mp4', 'webm', 'mkv', 'avi', 'mov', // Videos
+  'mp3', 'wav', 'ogg', 'flac', 'm4a', // Audio
+  'pdf', // PDFs grandes
+];
+
+// Tamaño mínimo para considerar streaming (10MB)
+const MIN_SIZE_FOR_STREAMING = 10 * 1024 * 1024;
+
+// Tamaño máximo para cachear en memoria (50MB)
+// Archivos más grandes no se cachean para evitar problemas de memoria
+const MAX_CACHE_SIZE = 50 * 1024 * 1024;
+
+function shouldCompress(filename: string): boolean {
+  if (!COMPRESSION_ENABLED) return false;
+  
+  const ext = filename.split('.').pop()?.toLowerCase();
+  return ext ? COMPRESSIBLE_EXTENSIONS.includes(ext) : false;
+}
+
+function shouldStream(filename: string, fileSize: number): boolean {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  return (ext && STREAMABLE_EXTENSIONS.includes(ext) && fileSize >= MIN_SIZE_FOR_STREAMING) || false;
+}
+
+async function compressBlob(blob: Blob): Promise<Blob> {
+  const stream = blob.stream();
+  const compressedStream = stream.pipeThrough(
+    new CompressionStream('gzip')
+  );
+  return new Response(compressedStream).blob();
+}
+
+async function decompressBlob(blob: Blob): Promise<Blob> {
+  const stream = blob.stream();
+  const decompressedStream = stream.pipeThrough(
+    new DecompressionStream('gzip')
+  );
+  return new Response(decompressedStream).blob();
+}
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
@@ -69,12 +116,6 @@ class MetadataCache {
 
 const metadataCache = new MetadataCache();
 
-/**
- * Ejecuta una función con retry exponencial backoff
- * @param fn Función a ejecutar
- * @param retries Número de reintentos restantes
- * @param delay Delay actual en ms
- */
 async function withRetry<T>(
   fn: () => Promise<T>,
   retries = MAX_RETRIES,
@@ -85,13 +126,13 @@ async function withRetry<T>(
     return await fn();
   } catch (error) {
     if (retries === 0) {
-      console.error(`❌ Max retries reached${chunkInfo ? ` for ${chunkInfo}` : ''}`);
+      console.error(`Max retries reached${chunkInfo ? ` for ${chunkInfo}` : ''}`);
       throw error;
     }
 
     const nextDelay = delay * 2; // Exponential backoff
     console.warn(
-      `⚠️ Retry ${MAX_RETRIES - retries + 1}/${MAX_RETRIES}${chunkInfo ? ` for ${chunkInfo}` : ''} ` +
+      `Retry ${MAX_RETRIES - retries + 1}/${MAX_RETRIES}${chunkInfo ? ` for ${chunkInfo}` : ''} ` +
       `after ${delay}ms. Error: ${error}`
     );
 
@@ -100,9 +141,6 @@ async function withRetry<T>(
   }
 }
 
-/**
- * Fetch con timeout configurable (importante para ZeroTier/VPN)
- */
 async function fetchWithTimeout(
   url: string,
   options?: RequestInit,
@@ -135,6 +173,7 @@ export interface FileMetadata {
   modified_at: string;
   chunks: ChunkEntry[];
   is_deleted: boolean;
+  compressed?: boolean; // Flag para indicar si el archivo está comprimido
 }
 
 export interface ChunkEntry {
@@ -223,7 +262,7 @@ class APIService {
     
     // Store in cache
     metadataCache.set(cacheKey, files);
-    console.log(`💾 Cache stored: ${cacheKey} (${files.length} files)`);
+    console.log(`Cache stored: ${cacheKey} (${files.length} files)`);
     
     return files;
   }
@@ -271,6 +310,23 @@ class APIService {
     remotePath: string,
     onProgress?: (progress: number) => void
   ): Promise<void> {
+    // Determinar si debemos comprimir
+    const needsCompression = shouldCompress(file.name);
+    let fileToUpload: Blob = file;
+    let originalSize = file.size;
+    
+    if (needsCompression) {
+      console.log(`Compressing file before upload: ${file.name}`);
+      const startTime = Date.now();
+      fileToUpload = await compressBlob(file);
+      const compressionTime = Date.now() - startTime;
+      const compressionRatio = ((1 - fileToUpload.size / file.size) * 100).toFixed(1);
+      console.log(
+        `Compressed: ${originalSize} → ${fileToUpload.size} bytes ` +
+        `(${compressionRatio}% reduction) in ${compressionTime}ms`
+      );
+    }
+    
     // 1. Init upload - El servidor decide el chunk_size
     const initResponse = await this.request<{
       file_id: string;
@@ -284,7 +340,9 @@ class APIService {
       method: "POST",
       body: JSON.stringify({
         path: remotePath,
-        size: file.size,
+        size: fileToUpload.size, // Tamaño después de compresión
+        compressed: needsCompression,
+        original_size: needsCompression ? originalSize : undefined,
       }),
     });
 
@@ -304,8 +362,8 @@ class APIService {
     const uploadChunk = async (index: number) => {
       const chunk = chunks[index];
       const start = index * chunk_size;
-      const end = Math.min(start + chunk_size, file.size);
-      const chunkBlob = file.slice(start, end);
+      const end = Math.min(start + chunk_size, fileToUpload.size);
+      const chunkBlob = fileToUpload.slice(start, end);
 
       const arrayBuffer = await chunkBlob.arrayBuffer();
       const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
@@ -403,13 +461,23 @@ class APIService {
     const cacheKey = `blob_${path}`;
     const cachedBlob = metadataCache.get<Blob>(cacheKey);
     if (cachedBlob) {
-      console.log(`Blob cache hit: ${path}`);
+      console.log(`💾 Blob cache hit: ${path}`);
       if (onProgress) onProgress(100);
       return cachedBlob;
     }
 
     // Get file metadata
     const metadata = await this.getFile(path);
+
+    // Determinar si usar descarga optimizada para streaming
+    const useStreamingDownload = shouldStream(path, metadata.size);
+    
+    if (useStreamingDownload) {
+      console.log(`Using streaming download for: ${path} (${metadata.size} bytes)`);
+      // Para archivos streamables grandes, usar descarga secuencial con menos concurrencia
+      // esto permite reproducción mientras se descarga
+      return this.downloadFileStreaming(path, metadata, onProgress);
+    }
 
     console.log(`Downloading file: ${metadata.chunks.length} chunks`);
 
@@ -475,11 +543,100 @@ class APIService {
     console.log(`Download complete, combining ${chunkBlobs.length} chunks`);
 
     // Combine chunks en el orden correcto
+    let finalBlob = new Blob(chunkBlobs);
+    
+    // Descomprimir si es necesario
+    if (metadata.compressed) {
+      console.log(`🗜️ Decompressing file: ${path}`);
+      const startTime = Date.now();
+      const compressedSize = finalBlob.size;
+      finalBlob = await decompressBlob(finalBlob);
+      const decompressionTime = Date.now() - startTime;
+      console.log(
+        `Decompressed: ${compressedSize} → ${finalBlob.size} bytes ` +
+        `in ${decompressionTime}ms`
+      );
+    }
+    
+    // Store in cache for future previews (si no es muy grande)
+    if (finalBlob.size <= MAX_CACHE_SIZE) {
+      metadataCache.set(cacheKey, finalBlob);
+      console.log(`Blob cached: ${path} (${finalBlob.size} bytes)`);
+    } else {
+      console.log(`File too large to cache: ${path} (${finalBlob.size} bytes)`);
+    }
+    
+    return finalBlob;
+  }
+
+  /**
+   * Descarga optimizada para archivos grandes streamables (video, audio, PDF)
+   * Usa menos concurrencia para permitir reproducción progresiva
+   */
+  private async downloadFileStreaming(
+    path: string,
+    metadata: FileMetadata,
+    onProgress?: (progress: number) => void
+  ): Promise<Blob> {
+    const cacheKey = `blob_${path}`;
+    
+    // Usar solo 3 descargas concurrentes para archivos streamables
+    // Esto reduce presión de memoria y permite reproducción más rápida
+    const CONCURRENT_DOWNLOADS = 3;
+    const chunkBlobs: Blob[] = new Array(metadata.chunks.length);
+    let completedChunks = 0;
+
+    const downloadChunk = async (index: number) => {
+      const chunk = metadata.chunks[index];
+      const proxyUrl = `${this.baseURL}/api/v1/proxy/chunks/${chunk.chunk_id}?file_path=${encodeURIComponent(path)}`;
+
+      const chunkBlob = await withRetry(
+        async () => {
+          const response = await fetchWithTimeout(proxyUrl);
+          
+          if (!response.ok) {
+            throw new Error(
+              `Download failed: ${response.status} ${response.statusText}`
+            );
+          }
+
+          return response.blob();
+        },
+        MAX_RETRIES,
+        INITIAL_RETRY_DELAY,
+        `chunk ${index + 1}/${metadata.chunks.length}`
+      );
+
+      chunkBlobs[index] = chunkBlob;
+
+      completedChunks++;
+      if (onProgress) {
+        onProgress((completedChunks / metadata.chunks.length) * 100);
+      }
+    };
+
+    // Descargar en batches más pequeños para streaming
+    for (let i = 0; i < metadata.chunks.length; i += CONCURRENT_DOWNLOADS) {
+      const batchEnd = Math.min(i + CONCURRENT_DOWNLOADS, metadata.chunks.length);
+      const batchIndices = Array.from(
+        { length: batchEnd - i },
+        (_, idx) => i + idx
+      );
+
+      await Promise.all(
+        batchIndices.map(idx => downloadChunk(idx))
+      );
+    }
+
     const finalBlob = new Blob(chunkBlobs);
     
-    // Store in cache for future previews
-    metadataCache.set(cacheKey, finalBlob);
-    console.log(`Blob cached: ${path} (${finalBlob.size} bytes)`);
+    // Cache para archivos streamables también (si no son demasiado grandes)
+    if (finalBlob.size <= MAX_CACHE_SIZE) {
+      metadataCache.set(cacheKey, finalBlob);
+      console.log(`Streaming file cached: ${path} (${finalBlob.size} bytes)`);
+    } else {
+      console.log(`File too large to cache: ${path} (${finalBlob.size} bytes)`);
+    }
     
     return finalBlob;
   }

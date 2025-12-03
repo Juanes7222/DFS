@@ -54,7 +54,8 @@ async def upload_init(request: UploadInitRequest):
     Devuelve un plan de chunks con targets para cada réplica.
     El tamaño de chunk es determinado por el servidor.
     """
-    logger.info(f"Upload init: {request.path}, size: {format_bytes(request.size)}")
+    compression_info = f" (compressed: {request.compressed})" if request.compressed else ""
+    logger.info(f"Upload init: {request.path}, size: {format_bytes(request.size)}{compression_info}")
 
     storage = get_storage()
     
@@ -93,7 +94,11 @@ async def upload_init(request: UploadInitRequest):
 
         # Crear metadata de archivo
         file_metadata = await storage.create_file_metadata(
-            path=request.path, size=request.size, chunks=chunks
+            path=request.path, 
+            size=request.size, 
+            chunks=chunks,
+            compressed=request.compressed,
+            original_size=request.original_size
         )
 
         logger.info(

@@ -63,6 +63,8 @@ class FileMetadata(BaseModel):
     chunks: List[ChunkEntry] = Field(default_factory=list)
     is_deleted: bool = False
     deleted_at: Optional[datetime] = None
+    compressed: bool = False  # Indica si el archivo está comprimido en cliente
+    original_size: Optional[int] = None  # Tamaño original antes de comprimir
 
 
 class NodeInfo(BaseModel):
@@ -88,6 +90,8 @@ class UploadInitRequest(BaseModel):
 
     path: str
     size: int
+    compressed: bool = False  # Indica si el archivo viene comprimido desde el cliente
+    original_size: Optional[int] = None  # Tamaño original si está comprimido
 
 
 class ChunkTarget(BaseModel):

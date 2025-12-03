@@ -73,7 +73,9 @@ class SQLiteMetadataStorage(MetadataStorageBase):
                 modified_at TEXT NOT NULL,
                 is_deleted INTEGER DEFAULT 0,
                 deleted_at TEXT,
-                chunks_json TEXT NOT NULL
+                chunks_json TEXT NOT NULL,
+                compressed INTEGER DEFAULT 0,
+                original_size INTEGER
             )
             """,
             """
@@ -161,7 +163,8 @@ class SQLiteMetadataStorage(MetadataStorageBase):
             logger.info("Conexión de metadata storage cerrada")
 
     async def create_file_metadata(
-        self, path: str, size: int, chunks: List[ChunkTarget]
+        self, path: str, size: int, chunks: List[ChunkTarget], 
+        compressed: bool = False, original_size: Optional[int] = None
     ) -> FileMetadata:
         """Crea metadata de archivo"""
         async with self.lock:
@@ -186,6 +189,8 @@ class SQLiteMetadataStorage(MetadataStorageBase):
                 created_at=now,
                 modified_at=now,
                 chunks=chunk_entries,
+                compressed=compressed,
+                original_size=original_size,
             )
 
             chunks_json = json.dumps([c.model_dump(mode="json") for c in chunk_entries])
@@ -194,8 +199,8 @@ class SQLiteMetadataStorage(MetadataStorageBase):
                 conn = self._conn
                 conn.execute(
                     """
-                    INSERT INTO files (file_id, path, size, created_at, modified_at, chunks_json)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO files (file_id, path, size, created_at, modified_at, chunks_json, compressed, original_size)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(file_id),
@@ -204,6 +209,8 @@ class SQLiteMetadataStorage(MetadataStorageBase):
                         now.isoformat(),
                         now.isoformat(),
                         chunks_json,
+                        compressed,
+                        original_size,
                     ),
                 )
                 conn.commit()
@@ -781,6 +788,8 @@ class SQLiteMetadataStorage(MetadataStorageBase):
             deleted_at=datetime.fromisoformat(row["deleted_at"])
             if row["deleted_at"]
             else None,
+            compressed=bool(row.get("compressed", 0)),
+            original_size=row.get("original_size"),
         )
 
     def _row_to_node_info(self, row) -> NodeInfo:

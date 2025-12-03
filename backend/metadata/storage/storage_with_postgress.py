@@ -83,7 +83,9 @@ class PostgresMetadataStorage(MetadataStorageBase):
                     modified_at TIMESTAMPTZ NOT NULL,
                     is_deleted BOOLEAN DEFAULT FALSE,
                     deleted_at TIMESTAMPTZ,
-                    chunks_json JSONB NOT NULL
+                    chunks_json JSONB NOT NULL,
+                    compressed BOOLEAN DEFAULT FALSE,
+                    original_size BIGINT
                 )
                 """
             )
@@ -149,7 +151,8 @@ class PostgresMetadataStorage(MetadataStorageBase):
             logger.info("Conexión de metadata storage cerrada")
 
     async def create_file_metadata(
-        self, path: str, size: int, chunks: List[ChunkTarget]
+        self, path: str, size: int, chunks: List[ChunkTarget],
+        compressed: bool = False, original_size: Optional[int] = None
     ) -> FileMetadata:
         """Crea metadata de archivo"""
         async with self.lock:
@@ -173,6 +176,8 @@ class PostgresMetadataStorage(MetadataStorageBase):
                 created_at=now,
                 modified_at=now,
                 chunks=chunk_entries,
+                compressed=compressed,
+                original_size=original_size,
             )
 
             chunks_json = json.dumps([c.model_dump(mode="json") for c in chunk_entries])
@@ -181,8 +186,8 @@ class PostgresMetadataStorage(MetadataStorageBase):
                 async with self.pool.acquire() as conn:
                     await conn.execute(
                         """
-                        INSERT INTO files (file_id, path, size, created_at, modified_at, chunks_json)
-                        VALUES ($1, $2, $3, $4, $5, $6)
+                        INSERT INTO files (file_id, path, size, created_at, modified_at, chunks_json, compressed, original_size)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                         """,
                         file_id,
                         path,
@@ -190,6 +195,8 @@ class PostgresMetadataStorage(MetadataStorageBase):
                         now,
                         now,
                         chunks_json,
+                        compressed,
+                        original_size,
                     )
 
                 logger.info(f"Metadata creada: {path} (ID: {file_id})")
@@ -801,6 +808,8 @@ class PostgresMetadataStorage(MetadataStorageBase):
             chunks=chunks,
             is_deleted=row["is_deleted"],
             deleted_at=row["deleted_at"] if row["deleted_at"] else None,
+            compressed=row.get("compressed", False),
+            original_size=row.get("original_size"),
         )
 
     def _row_to_node_info(self, row) -> NodeInfo:

@@ -73,7 +73,7 @@ class DFSConfig:
     replication_factor = int(os.getenv("DFS_REPLICATION_FACTOR", "3"))
     data_port = int(os.getenv("DATA_PORT", "5001"))
     
-    backend_storage_type: str = os.getenv("BACKEND_STORAGE_TYPE", "sqlite").lower()  # "sqlite" o "postgres"
+    backend_storage_type: str = os.getenv("BACKEND_STORAGE_TYPE", "postgres").lower()  # "sqlite" o "postgres"
     postgres_url: str = os.getenv("POSTGRES_URL", "postgresql://user:password@localhost:5432/dfs_metadata")
 
     @property
