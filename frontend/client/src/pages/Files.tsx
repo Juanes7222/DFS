@@ -237,15 +237,19 @@ export default function Files() {
         // Podría mostrar avances si se desea
       });
 
-      const mimeFromBlob = blob.type || getMimeFromExtension(file.path) || "application/octet-stream";
-      const url = URL.createObjectURL(blob);
+      const mimeFromExt = getMimeFromExtension(file.path) || "application/octet-stream";
+      // Si el blob no tiene type, rehacerlo con el MIME basado en la extensión
+      const effectiveBlob = blob.type ? blob : new Blob([blob], { type: mimeFromExt });
+
+      const mimeFromBlob = effectiveBlob.type || mimeFromExt;
+      const url = URL.createObjectURL(effectiveBlob);
       setPreviewBlobUrl(url);
       setPreviewMime(mimeFromBlob);
 
       // Si es similar a texto, simplemente lo carga
       if (mimeFromBlob.startsWith("text/") || mimeFromBlob === "application/json" || mimeFromBlob === "text/markdown") {
         try {
-          const txt = await blob.text();
+          const txt = await effectiveBlob.text();
           setPreviewText(txt);
         } catch (e) {
           // Ignora el error de análisis del texto
@@ -257,6 +261,7 @@ export default function Files() {
       setPreviewLoading(false);
     }
   }
+
 
   useEffect(() => {
     if (!previewDialogOpen && previewBlobUrl) {
@@ -592,7 +597,7 @@ export default function Files() {
                   {!previewMime.startsWith("image/") && previewMime !== "application/pdf" && !previewMime.startsWith("text/") && !previewMime.startsWith("video/") && !previewMime.startsWith("audio/") && (
                     <div className="p-4 bg-muted rounded">
                       <p className="text-sm text-muted-foreground">No es posible visualizar este formato de archivo.</p>
-                      <p className="text-sm text-muted-foreground">Descarga el archivo para abrirlo localmente.</p>
+                      <p className="text-sm text-muted-foreground">Descargue el archivo para abrirlo localmente.</p>
                     </div>
                   )}
                 </div>
