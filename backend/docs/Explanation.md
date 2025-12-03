@@ -143,7 +143,7 @@ Chunks más pequeños permiten mejor balance de carga pero aumentan overhead de 
 
 ```python
 # En el Metadata Service
-CHUNK_SIZE = 67108864  # 64MB en bytes
+CHUNK_SIZE = 1048576  # 64MB en bytes
 
 def calculate_chunks(file_size: int, chunk_size: int = CHUNK_SIZE):
     """Calcula cuántos chunks se necesitan para un archivo"""
@@ -889,7 +889,7 @@ Todos los requests y responses usan JSON para metadata. Los datos binarios de ch
 {
   "path": "/usuarios/alice/documento.pdf",
   "size": 10485760,  # 10MB
-  "chunk_size": 67108864  # 64MB
+  "chunk_size": 1048576  # 64MB
 }
 
 # Ejemplo de response upload-init
@@ -2242,7 +2242,7 @@ METADATA_STORAGE_BACKEND=sqlite  # o etcd
 METADATA_DB_PATH=/data/metadata.db
 ETCD_ENDPOINTS=localhost:2379,localhost:2380,localhost:2381
 REPLICATION_FACTOR=3
-CHUNK_SIZE=67108864  # 64MB
+CHUNK_SIZE=1048576  # 64MB
 
 # DataNode
 NODE_ID=node-server1-8001

@@ -128,7 +128,7 @@ function testUpload(baseUrl) {
     JSON.stringify({
       path: filePath,
       size: testData.length,
-      chunk_size: 67108864
+      chunk_size: 1048576
     }),
     {
       headers: { 'Content-Type': 'application/json' },

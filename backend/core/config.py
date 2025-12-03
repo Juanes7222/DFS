@@ -21,7 +21,7 @@ class DFSConfig:
     storage_path: Path = Path(os.getenv("DFS_STORAGE_PATH", "/tmp/dfs-data"))
 
     # Configuración de Chunk
-    chunk_size: int = int(os.getenv("DFS_CHUNK_SIZE", "67108864"))  # 64MB
+    chunk_size: int = int(os.getenv("DFS_CHUNK_SIZE", "1048576"))  # 64MB
     replication_factor: int = int(os.getenv("DFS_REPLICATION_FACTOR", "3"))
     
     # Replicación

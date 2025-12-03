@@ -24,7 +24,7 @@ Inicia el proceso de subida de un archivo.
 {
   "path": "/path/to/file.txt",
   "size": 134217728,
-  "chunk_size": 67108864
+  "chunk_size": 1048576
 }
 ```
 
@@ -36,7 +36,7 @@ Inicia el proceso de subida de un archivo.
   "chunks": [
     {
       "chunk_id": "660e8400-e29b-41d4-a716-446655440001",
-      "size": 67108864,
+      "size": 1048576,
       "targets": [
         "http://datanode1:8001",
         "http://datanode2:8002",
@@ -45,7 +45,7 @@ Inicia el proceso de subida de un archivo.
     },
     {
       "chunk_id": "770e8400-e29b-41d4-a716-446655440002",
-      "size": 67108864,
+      "size": 1048576,
       "targets": [
         "http://datanode2:8002",
         "http://datanode3:8003",
@@ -64,7 +64,7 @@ curl -X POST http://localhost:8000/api/v1/files/upload-init \
   -d '{
     "path": "/test/file.txt",
     "size": 1048576,
-    "chunk_size": 67108864
+    "chunk_size": 1048576
   }'
 ```
 
@@ -132,7 +132,7 @@ Obtiene metadata de un archivo específico.
     {
       "chunk_id": "660e8400-e29b-41d4-a716-446655440001",
       "seq_index": 0,
-      "size": 67108864,
+      "size": 1048576,
       "checksum": "sha256_hex",
       "replicas": [
         {
@@ -428,7 +428,7 @@ Almacena un chunk.
 {
   "status": "stored",
   "chunk_id": "660e8400-e29b-41d4-a716-446655440001",
-  "size": 67108864,
+  "size": 1048576,
   "checksum": "sha256_hex"
 }
 ```
@@ -594,7 +594,7 @@ FILE_SIZE=$(stat -f%z "$FILE_PATH")
 # 2. Iniciar upload
 INIT_RESPONSE=$(curl -s -X POST "$METADATA_URL/api/v1/files/upload-init" \
   -H "Content-Type: application/json" \
-  -d "{\"path\": \"$REMOTE_PATH\", \"size\": $FILE_SIZE, \"chunk_size\": 67108864}")
+  -d "{\"path\": \"$REMOTE_PATH\", \"size\": $FILE_SIZE, \"chunk_size\": 1048576}")
 
 FILE_ID=$(echo $INIT_RESPONSE | jq -r '.file_id')
 CHUNKS=$(echo $INIT_RESPONSE | jq -c '.chunks[]')

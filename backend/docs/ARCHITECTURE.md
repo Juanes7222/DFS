@@ -297,7 +297,7 @@ Metadata Service           DataNode1 (source)         DataNode4 (target)
     {
       "chunk_id": "uuid",
       "seq_index": 0,
-      "size": 67108864,
+      "size": 1048576,
       "checksum": "sha256_hex",
       "replicas": [
         {
