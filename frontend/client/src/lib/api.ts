@@ -11,6 +11,64 @@ const INITIAL_RETRY_DELAY = 1000; // 1 segundo
 // Timeout configuration (más generosos para ZeroTier)
 const FETCH_TIMEOUT = 120000; // 2 minutos por chunk (para redes lentas/VPN)
 
+// Cache configuration
+const CACHE_VERSION = "v1";
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+const CACHE_KEY_PREFIX = `dfs_cache_${CACHE_VERSION}_`;
+
+/**
+ * Caché simple de metadata en memoria con TTL
+ */
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+class MetadataCache {
+  private cache = new Map<string, CacheEntry<any>>();
+
+  set<T>(key: string, data: T): void {
+    this.cache.set(CACHE_KEY_PREFIX + key, {
+      data,
+      timestamp: Date.now(),
+    });
+  }
+
+  get<T>(key: string): T | null {
+    const entry = this.cache.get(CACHE_KEY_PREFIX + key);
+    if (!entry) return null;
+
+    // Check TTL
+    if (Date.now() - entry.timestamp > CACHE_TTL) {
+      this.cache.delete(CACHE_KEY_PREFIX + key);
+      return null;
+    }
+
+    return entry.data as T;
+  }
+
+  invalidate(key: string): void {
+    this.cache.delete(CACHE_KEY_PREFIX + key);
+  }
+
+  invalidateAll(): void {
+    this.cache.clear();
+  }
+
+  invalidatePattern(pattern: string): void {
+    const regex = new RegExp(pattern);
+    const keysToDelete: string[] = [];
+    this.cache.forEach((_, key) => {
+      if (regex.test(key)) {
+        keysToDelete.push(key);
+      }
+    });
+    keysToDelete.forEach(key => this.cache.delete(key));
+  }
+}
+
+const metadataCache = new MetadataCache();
+
 /**
  * Ejecuta una función con retry exponencial backoff
  * @param fn Función a ejecutar
@@ -151,14 +209,44 @@ class APIService {
 
   // Files
   async listFiles(prefix?: string): Promise<FileMetadata[]> {
+    const cacheKey = `files_list_${prefix || 'all'}`;
+    
+    // Check cache first
+    const cached = metadataCache.get<FileMetadata[]>(cacheKey);
+    if (cached) {
+      console.log(`Cache hit: ${cacheKey}`);
+      return cached;
+    }
+
     const params = prefix ? `?prefix=${encodeURIComponent(prefix)}` : "";
-    return this.request<FileMetadata[]>(`/api/v1/files${params}`);
+    const files = await this.request<FileMetadata[]>(`/api/v1/files${params}`);
+    
+    // Store in cache
+    metadataCache.set(cacheKey, files);
+    console.log(`💾 Cache stored: ${cacheKey} (${files.length} files)`);
+    
+    return files;
   }
 
   async getFile(path: string): Promise<FileMetadata> {
-    return this.request<FileMetadata>(
+    const cacheKey = `file_${path}`;
+    
+    // Check cache first
+    const cached = metadataCache.get<FileMetadata>(cacheKey);
+    if (cached) {
+      console.log(`Cache hit: ${cacheKey}`);
+      return cached;
+    }
+
+    const file = await this.request<FileMetadata>(
       `/api/v1/files/${encodeURIComponent(path)}`
     );
+    
+    // Store in cache
+    metadataCache.set(cacheKey, file);
+    console.log(`Cache stored: ${cacheKey}`);
+    
+    return file;
   }
 
   async deleteFile(path: string, permanent: boolean = false): Promise<void> {
@@ -168,6 +256,12 @@ class APIService {
         method: "DELETE",
       }
     );
+    
+    // Invalidate cache
+    metadataCache.invalidate(`file_${path}`);
+    metadataCache.invalidate(`blob_${path}`);
+    metadataCache.invalidatePattern(`files_list_`);
+    console.log(`Cache invalidated: file_${path}, blob and all lists`);
   }
 
   // En api.ts - Upload via Proxy
@@ -293,12 +387,27 @@ class APIService {
         chunks: commitData,
       }),
     });
+    
+    // Invalidate cache after successful upload
+    metadataCache.invalidate(`file_${remotePath}`);
+    metadataCache.invalidate(`blob_${remotePath}`);
+    metadataCache.invalidatePattern(`files_list_`);
+    console.log(`Cache invalidated: file_${remotePath}, blob and all lists`);
   }
 
   async downloadFile(
     path: string,
     onProgress?: (progress: number) => void
   ): Promise<Blob> {
+    // Check blob cache first
+    const cacheKey = `blob_${path}`;
+    const cachedBlob = metadataCache.get<Blob>(cacheKey);
+    if (cachedBlob) {
+      console.log(`Blob cache hit: ${path}`);
+      if (onProgress) onProgress(100);
+      return cachedBlob;
+    }
+
     // Get file metadata
     const metadata = await this.getFile(path);
 
@@ -366,7 +475,13 @@ class APIService {
     console.log(`Download complete, combining ${chunkBlobs.length} chunks`);
 
     // Combine chunks en el orden correcto
-    return new Blob(chunkBlobs);
+    const finalBlob = new Blob(chunkBlobs);
+    
+    // Store in cache for future previews
+    metadataCache.set(cacheKey, finalBlob);
+    console.log(`Blob cached: ${path} (${finalBlob.size} bytes)`);
+    
+    return finalBlob;
   }
 
   // Nodes
@@ -376,6 +491,23 @@ class APIService {
 
   async getNode(nodeId: string): Promise<NodeInfo> {
     return this.request<NodeInfo>(`/api/v1/nodes/${nodeId}`);
+  }
+
+  // Cache management
+  clearCache(): void {
+    metadataCache.invalidateAll();
+    console.log("Cache cleared completely");
+  }
+
+  getCacheStats(): { size: number; keys: string[] } {
+    const keys: string[] = [];
+    metadataCache['cache'].forEach((_, key) => {
+      keys.push(key);
+    });
+    return {
+      size: keys.length,
+      keys: keys
+    };
   }
 }
 
