@@ -115,7 +115,7 @@ class APIService {
     // 1. Init upload - El servidor decide el chunk_size
     const initResponse = await this.request<{
       file_id: string;
-      chunk_size: number;  // Tamaño de chunk determinado por el servidor
+      chunk_size: number;
       chunks: Array<{
         chunk_id: string;
         size: number;
@@ -132,17 +132,21 @@ class APIService {
     const { file_id, chunks, chunk_size } = initResponse;
 
     console.log(`Server determined chunk size: ${chunk_size} bytes`);
+    console.log(`Total chunks to upload: ${chunks.length}`);
 
-    // 2. Upload chunks via metadata service proxy
+    // 2. Upload chunks in parallel (max 3 concurrent)
+    const CONCURRENT_UPLOADS = 3;
     const commitData: Array<{
       chunk_id: string;
       checksum: string;
       nodes: string[];
     }> = [];
+    let completedChunks = 0;
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const start = i * chunk_size;
+    // Función para subir un chunk individual
+    const uploadChunk = async (index: number) => {
+      const chunk = chunks[index];
+      const start = index * chunk_size;
       const end = Math.min(start + chunk_size, file.size);
       const chunkBlob = file.slice(start, end);
 
@@ -154,42 +158,60 @@ class APIService {
         .map(b => b.toString(16).padStart(2, "0"))
         .join("");
 
-      try {
-        const formData = new FormData();
-        formData.append("file", chunkBlob);
+      const formData = new FormData();
+      formData.append("file", chunkBlob);
 
-        // Upload via proxy endpoint (no need to access DataNodes directly)
-        const proxyUrl = `${this.baseURL}/api/v1/proxy/chunks/${chunk.chunk_id}?target_nodes=${chunk.targets.join(",")}`;
+      const proxyUrl = `${this.baseURL}/api/v1/proxy/chunks/${chunk.chunk_id}?target_nodes=${chunk.targets.join(",")}`;
 
-        console.log(`📤 Uploading chunk ${i + 1}/${chunks.length} via proxy (${chunkBlob.size} bytes)`);
+      console.log(`Uploading chunk ${index + 1}/${chunks.length} (${chunkBlob.size} bytes)`);
 
-        const response = await fetch(proxyUrl, {
-          method: "PUT",
-          body: formData,
-        });
+      const response = await fetch(proxyUrl, {
+        method: "PUT",
+        body: formData,
+      });
 
-        if (!response.ok) {
-          throw new Error(
-            `Upload failed: ${response.status} ${response.statusText}`
-          );
-        }
-
-        const result = await response.json();
-        const uploadedNodes = result.nodes || [];
-
-        commitData.push({
-          chunk_id: chunk.chunk_id,
-          checksum,
-          nodes: uploadedNodes,
-        });
-
-        if (onProgress) {
-          onProgress(((i + 1) / chunks.length) * 100);
-        }
-      } catch (error) {
-        console.error(`Error uploading chunk ${i}:`, error);
-        throw new Error(`Failed to upload chunk ${i}: ${error}`);
+      if (!response.ok) {
+        throw new Error(
+          `Upload failed for chunk ${index}: ${response.status} ${response.statusText}`
+        );
       }
+
+      const result = await response.json();
+      const uploadedNodes = result.nodes || [];
+
+      completedChunks++;
+      if (onProgress) {
+        onProgress((completedChunks / chunks.length) * 100);
+      }
+
+      return {
+        chunk_id: chunk.chunk_id,
+        checksum,
+        nodes: uploadedNodes,
+      };
+    };
+
+    // Upload chunks en batches paralelos
+    try {
+      for (let i = 0; i < chunks.length; i += CONCURRENT_UPLOADS) {
+        const batchEnd = Math.min(i + CONCURRENT_UPLOADS, chunks.length);
+        const batchIndices = Array.from(
+          { length: batchEnd - i },
+          (_, idx) => i + idx
+        );
+
+        console.log(`Starting parallel batch: chunks ${i + 1}-${batchEnd}`);
+
+        // Subir batch de chunks en paralelo
+        const batchResults = await Promise.all(
+          batchIndices.map(idx => uploadChunk(idx))
+        );
+
+        commitData.push(...batchResults);
+      }
+    } catch (error) {
+      console.error(`Error during parallel upload:`, error);
+      throw new Error(`Failed to upload file: ${error}`);
     }
 
     // 3. Commit
@@ -209,39 +231,61 @@ class APIService {
     // Get file metadata
     const metadata = await this.getFile(path);
 
-    // Download chunks via proxy
-    const chunkBlobs: Blob[] = [];
+    console.log(`Downloading file: ${metadata.chunks.length} chunks`);
 
-    for (let i = 0; i < metadata.chunks.length; i++) {
-      const chunk = metadata.chunks[i];
+    // Download chunks in parallel (max 5 concurrent)
+    const CONCURRENT_DOWNLOADS = 5;
+    const chunkBlobs: Blob[] = new Array(metadata.chunks.length);
+    let completedChunks = 0;
 
-      try {
-        // Download via proxy endpoint (no need to access DataNodes directly)
-        const proxyUrl = `${this.baseURL}/api/v1/proxy/chunks/${chunk.chunk_id}?file_path=${encodeURIComponent(path)}`;
-        
-        console.log(`Downloading chunk ${i + 1}/${metadata.chunks.length} via proxy`);
+    // Función para descargar un chunk individual
+    const downloadChunk = async (index: number) => {
+      const chunk = metadata.chunks[index];
+      const proxyUrl = `${this.baseURL}/api/v1/proxy/chunks/${chunk.chunk_id}?file_path=${encodeURIComponent(path)}`;
+      
+      console.log(`Downloading chunk ${index + 1}/${metadata.chunks.length}`);
 
-        const response = await fetch(proxyUrl);
-        
-        if (!response.ok) {
-          throw new Error(
-            `Download failed: ${response.status} ${response.statusText}`
-          );
-        }
-
-        const chunkBlob = await response.blob();
-        chunkBlobs.push(chunkBlob);
-
-        if (onProgress) {
-          onProgress(((i + 1) / metadata.chunks.length) * 100);
-        }
-      } catch (error) {
-        console.error(`Error downloading chunk ${i}:`, error);
-        throw new Error(`Failed to download chunk ${i}: ${error}`);
+      const response = await fetch(proxyUrl);
+      
+      if (!response.ok) {
+        throw new Error(
+          `Download failed for chunk ${index}: ${response.status} ${response.statusText}`
+        );
       }
+
+      const chunkBlob = await response.blob();
+      chunkBlobs[index] = chunkBlob; // Mantener orden correcto
+
+      completedChunks++;
+      if (onProgress) {
+        onProgress((completedChunks / metadata.chunks.length) * 100);
+      }
+    };
+
+    // Download chunks en batches paralelos
+    try {
+      for (let i = 0; i < metadata.chunks.length; i += CONCURRENT_DOWNLOADS) {
+        const batchEnd = Math.min(i + CONCURRENT_DOWNLOADS, metadata.chunks.length);
+        const batchIndices = Array.from(
+          { length: batchEnd - i },
+          (_, idx) => i + idx
+        );
+
+        console.log(`Downloading parallel batch: chunks ${i + 1}-${batchEnd}`);
+
+        // Descargar batch en paralelo
+        await Promise.all(
+          batchIndices.map(idx => downloadChunk(idx))
+        );
+      }
+    } catch (error) {
+      console.error(`Error during parallel download:`, error);
+      throw new Error(`Failed to download file: ${error}`);
     }
 
-    // Combine chunks
+    console.log(`Download complete, combining ${chunkBlobs.length} chunks`);
+
+    // Combine chunks en el orden correcto
     return new Blob(chunkBlobs);
   }
 

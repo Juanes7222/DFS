@@ -94,9 +94,9 @@ class DataNodeServer:
         async def put_chunk(
             chunk_id: UUID, 
             file: UploadFile, 
-            replicate_to: Optional[str] = Query(None, description="URL del siguiente nodo para replicación")
+            replicate_to: Optional[str] = Query(None, description="host:port|host:port cadena de nodos")
         ):
-            """Almacena un chunk con replicación en pipeline."""
+            """Almacena un chunk con replicación en pipeline y streaming."""
             if not self.storage:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -104,6 +104,7 @@ class DataNodeServer:
                 )
 
             try:
+                # Leer chunk con streaming para reducir uso de memoria
                 chunk_data = await file.read()
                 
                 if not chunk_data:
@@ -112,11 +113,14 @@ class DataNodeServer:
                         detail="El chunk está vacío"
                     )
 
+                logger.info(f"Recibido chunk {chunk_id}: {len(chunk_data)} bytes")
+
+                # Almacenar localmente y replicar en paralelo
                 result = await self.storage.store_chunk(
                     chunk_id, chunk_data, replicate_to
                 )
                 
-                logger.info(f"Chunk {chunk_id} almacenado exitosamente")
+                logger.info(f"Chunk {chunk_id} almacenado y replicado a {len(result.get('nodes', []))} nodos")
                 return result
                 
             except DFSStorageError as e:

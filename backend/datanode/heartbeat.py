@@ -30,17 +30,23 @@ class HeartbeatManager:
     def _get_public_url(self) -> str:
         """
         Obtiene la URL pública del DataNode.
-        Usa ZeroTier IP si está disponible, sino usa la configuración.
+        Para desarrollo local: usa localhost
+        Para producción: usa ZeroTier IP
         """
-        # Prioridad: ZeroTier IP > config host
-        if self.zerotier_ip:
+        # Si el metadata service es localhost, usar localhost también
+        if "localhost" in self.metadata_url or "127.0.0.1" in self.metadata_url:
+            host = "127.0.0.1"
+            logger.info(f"Desarrollo local detectado - usando {host}:{self.port}")
+        elif self.zerotier_ip:
+            # Producción: usar ZeroTier IP
             host = self.zerotier_ip
+            logger.info(f"Producción - usando ZeroTier IP: {host}:{self.port}")
         else:
+            # Fallback
             host = config.datanode_host
             if host == "0.0.0.0":
-                # Fallback a localhost solo si no hay ZeroTier
                 host = "localhost"
-                logger.warning("Usando localhost como fallback. Considera configurar ZeroTier.")
+                logger.warning("Usando localhost como fallback")
         
         return f"http://{host}:{self.port}"
 

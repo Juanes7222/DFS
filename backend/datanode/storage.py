@@ -125,43 +125,60 @@ class ChunkStorage(ChunkStorageProtocol):
     async def _replicate_to_nodes(
         self, chunk_id: UUID, chunk_data: bytes, replicate_to: str
     ) -> List[str]:
-        """Replica el chunk a los nodos especificados"""
+        """Replica el chunk a los nodos en pipeline (host:port|host:port)"""
         replicated_nodes = []
+        
+        if not replicate_to or not replicate_to.strip():
+            return replicated_nodes
+        
+        # Parsear cadena de nodos
         next_nodes = replicate_to.split("|")
-
         if not next_nodes:
             return replicated_nodes
 
-        current_target = next_nodes[0]
+        current_target = next_nodes[0].strip()
         remaining_chain = "|".join(next_nodes[1:]) if len(next_nodes) > 1 else None
 
+        # Agregar http:// si no está presente
+        if not current_target.startswith("http://") and not current_target.startswith("https://"):
+            current_target = f"http://{current_target}"
+
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                files = {"file": ("chunk", chunk_data, "application/octet-stream")}
+            logger.info(f"Replicando chunk {chunk_id} a {current_target} (pipeline: {bool(remaining_chain)})")
+            
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                from io import BytesIO
+                
+                files = {"file": ("chunk", BytesIO(chunk_data), "application/octet-stream")}
                 params = {}
 
                 if remaining_chain:
                     params["replicate_to"] = remaining_chain
+                    logger.info(f"Cadena restante: {remaining_chain}")
 
                 response = await client.put(
                     f"{current_target}/api/v1/chunks/{chunk_id}",
                     files=files,
                     params=params,
-                    timeout=60.0,
+                    timeout=120.0,
                 )
 
                 if response.status_code in (200, 201):
                     result = response.json()
                     downstream_nodes = result.get("nodes", [])
                     replicated_nodes.extend(downstream_nodes)
-                    logger.info(f"Replicación exitosa a {current_target}")
+                    logger.info(f"✅ Replicación exitosa: {current_target} -> {len(downstream_nodes)} nodos downstream")
                 else:
                     logger.error(
-                        f"Error replicando a {current_target}: {response.status_code}"
+                        f"❌ Error replicando a {current_target}: {response.status_code} - {response.text[:200]}"
                     )
 
+        except httpx.TimeoutException:
+            logger.error(f"⏱️ Timeout replicando a {current_target}")
+        except httpx.ConnectError as e:
+            logger.error(f"🔌 Error de conexión a {current_target}: {e}")
         except Exception as e:
-            logger.error(f"Excepción replicando a {replicate_to}: {e}")
+            logger.error(f"❌ Excepción replicando a {current_target}: {e}", exc_info=True)
 
         return replicated_nodes
 

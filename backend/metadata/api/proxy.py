@@ -42,13 +42,9 @@ async def proxy_upload_chunk(
         )
     
     try:
-        # Leer el chunk del cliente
-        chunk_data = await file.read()
-        logger.info(f"Chunk {chunk_id} recibido del cliente: {len(chunk_data)} bytes")
-        
         # Parsear nodos destino
         node_ids = [nid.strip() for nid in target_nodes.split(",")]
-        logger.info(f"Distribuyendo a {len(node_ids)} nodos: {node_ids}")
+        logger.info(f"Distribuyendo chunk {chunk_id} a {len(node_ids)} nodos: {node_ids}")
         
         # Obtener información de los nodos
         nodes_info = []
@@ -73,24 +69,29 @@ async def proxy_upload_chunk(
         primary_url = f"http://{primary_node.host}:{primary_node.port}"
         upload_url = f"{primary_url}/api/v1/chunks/{chunk_id}"
         
-        logger.info(f"Enviando chunk a nodo primario: {primary_node.node_id[:20]}...")
+        logger.info(f"Enviando chunk a nodo primario: {primary_node.node_id[:20]}... ({primary_url})")
         
-        # Enviar chunk con pipeline replication
-        from io import BytesIO
-        
-        files_payload = {
-            "file": (f"chunk_{chunk_id}", BytesIO(chunk_data), "application/octet-stream")
-        }
+        # Leer el chunk - necesitamos el contenido completo para multipart/form-data
+        # En el futuro, podemos optimizar esto con streaming real
+        chunk_data = await file.read()
+        chunk_size = len(chunk_data)
+        logger.info(f"Chunk {chunk_id} recibido: {chunk_size} bytes")
         
         params = {}
         if replication_chain:
-            # Construir cadena de URLs para replicación
-            chain_urls = [f"http://{n.host}:{n.port}" for n in replication_chain]
-            params["replicate_to"] = "|".join(chain_urls)
-            logger.info(f"Cadena de replicación: {len(chain_urls)} nodos")
+            # Construir cadena de nodos para replicación pipeline
+            chain_nodes = "|".join([f"{n.host}:{n.port}" for n in replication_chain])
+            params["replicate_to"] = chain_nodes
+            logger.info(f"Pipeline replication chain: {chain_nodes}")
         
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             try:
+                # Usar files= para mantener formato multipart/form-data
+                from io import BytesIO
+                files_payload = {
+                    "file": (f"chunk_{chunk_id}", BytesIO(chunk_data), "application/octet-stream")
+                }
+                
                 response = await client.put(
                     upload_url,
                     files=files_payload,
@@ -104,7 +105,7 @@ async def proxy_upload_chunk(
                     )
                     raise HTTPException(
                         status_code=status.HTTP_502_BAD_GATEWAY,
-                        detail=f"Error enviando chunk a DataNode: {response.status_code}"
+                        detail=f"Error enviando chunk a DataNode: {response.status_code} - {response.text[:100]}"
                     )
                 
                 result = response.json()
@@ -117,7 +118,7 @@ async def proxy_upload_chunk(
                 return {
                     "status": "success",
                     "chunk_id": str(chunk_id),
-                    "size": len(chunk_data),
+                    "size": chunk_size,
                     "nodes": uploaded_nodes
                 }
                 
