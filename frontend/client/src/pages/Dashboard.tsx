@@ -112,7 +112,7 @@ export default function Dashboard() {
         {/* Estado del Sistema */}
         <div className="mb-6">
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-0 pb-0 pl-4 flex items-center">
               <div className="flex items-center gap-3">
                 {health?.status === "healthy" ? (
                   <>
