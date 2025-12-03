@@ -1,12 +1,13 @@
 """DataNode unificado - Versión mejorada con mejor manejo de recursos y errores"""
 
+import gzip
 import logging
 import sys
 from contextlib import asynccontextmanager
 from typing import Optional
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, UploadFile, Query, status
+from fastapi import FastAPI, HTTPException, UploadFile, Query, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import uvicorn
@@ -93,10 +94,11 @@ class DataNodeServer:
         )
         async def put_chunk(
             chunk_id: UUID, 
-            file: UploadFile, 
+            file: UploadFile,
+            request: Request,
             replicate_to: Optional[str] = Query(None, description="host:port|host:port cadena de nodos")
         ):
-            """Almacena un chunk con replicación en pipeline y streaming."""
+            """Almacena un chunk con replicación en pipeline, soporta compresión HTTP."""
             if not self.storage:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -104,7 +106,7 @@ class DataNodeServer:
                 )
 
             try:
-                # Leer chunk con streaming para reducir uso de memoria
+                # Leer chunk
                 chunk_data = await file.read()
                 
                 if not chunk_data:
@@ -113,9 +115,33 @@ class DataNodeServer:
                         detail="El chunk está vacío"
                     )
 
-                logger.info(f"Recibido chunk {chunk_id}: {len(chunk_data)} bytes")
+                # Verificar si viene comprimido
+                content_encoding = request.headers.get("Content-Encoding", "").lower()
+                original_size_header = request.headers.get("X-Original-Size")
+                
+                if content_encoding == "gzip":
+                    # Descomprimir datos recibidos
+                    try:
+                        decompressed_data = gzip.decompress(chunk_data)
+                        compressed_size = len(chunk_data)
+                        original_size = len(decompressed_data)
+                        
+                        logger.info(
+                            f"Chunk {chunk_id} recibido comprimido: {compressed_size} bytes → "
+                            f"{original_size} bytes (descomprimido)"
+                        )
+                        
+                        chunk_data = decompressed_data
+                    except Exception as e:
+                        logger.error(f"Error descomprimiendo chunk {chunk_id}: {e}")
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Error descomprimiendo datos: {str(e)}"
+                        )
+                else:
+                    logger.info(f"Recibido chunk {chunk_id}: {len(chunk_data)} bytes (sin comprimir)")
 
-                # Almacenar localmente y replicar en paralelo
+                # Almacenar localmente y replicar
                 result = await self.storage.store_chunk(
                     chunk_id, chunk_data, replicate_to
                 )
@@ -129,6 +155,8 @@ class DataNodeServer:
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Error de almacenamiento: {str(e)}"
                 )
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.error(f"Error inesperado almacenando chunk {chunk_id}: {e}", exc_info=True)
                 raise HTTPException(
@@ -160,7 +188,6 @@ class DataNodeServer:
                         "X-Chunk-ID": str(chunk_id),
                         "X-Checksum": checksum,
                         "Content-Length": str(len(chunk_data)),
-                        "X-Decompressed": "true",  # Indica que ya está descomprimido
                     },
                 )
                 

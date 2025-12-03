@@ -8,6 +8,9 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000; // 1 segundo
 
+// Timeout configuration (más generosos para ZeroTier)
+const FETCH_TIMEOUT = 120000; // 2 minutos por chunk (para redes lentas/VPN)
+
 /**
  * Ejecuta una función con retry exponencial backoff
  * @param fn Función a ejecutar
@@ -36,6 +39,33 @@ async function withRetry<T>(
 
     await new Promise(resolve => setTimeout(resolve, delay));
     return withRetry(fn, retries - 1, nextDelay, chunkInfo);
+  }
+}
+
+/**
+ * Fetch con timeout configurable (importante para ZeroTier/VPN)
+ */
+async function fetchWithTimeout(
+  url: string,
+  options?: RequestInit,
+  timeoutMs = FETCH_TIMEOUT
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Request timeout after ${timeoutMs}ms`);
+    }
+    throw error;
   }
 }
 
@@ -169,8 +199,7 @@ class APIService {
     console.log(`Server determined chunk size: ${chunk_size} bytes`);
     console.log(`Total chunks to upload: ${chunks.length}`);
 
-    // 2. Upload chunks in parallel (max 3 concurrent)
-    const CONCURRENT_UPLOADS = 3;
+    const CONCURRENT_UPLOADS = 6;
     const commitData: Array<{
       chunk_id: string;
       checksum: string;
@@ -178,14 +207,12 @@ class APIService {
     }> = [];
     let completedChunks = 0;
 
-    // Función para subir un chunk individual con retry
     const uploadChunk = async (index: number) => {
       const chunk = chunks[index];
       const start = index * chunk_size;
       const end = Math.min(start + chunk_size, file.size);
       const chunkBlob = file.slice(start, end);
 
-      // Calculate checksum (fuera del retry para no recalcular)
       const arrayBuffer = await chunkBlob.arrayBuffer();
       const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
@@ -203,7 +230,7 @@ class APIService {
           const formData = new FormData();
           formData.append("file", chunkBlob);
 
-          const response = await fetch(proxyUrl, {
+          const response = await fetchWithTimeout(proxyUrl, {
             method: "PUT",
             body: formData,
           });
@@ -277,8 +304,8 @@ class APIService {
 
     console.log(`Downloading file: ${metadata.chunks.length} chunks`);
 
-    // Download chunks in parallel (max 5 concurrent)
-    const CONCURRENT_DOWNLOADS = 8;
+    // Download chunks in parallel (max 10 concurrent para máxima velocidad)
+    const CONCURRENT_DOWNLOADS = 10;
     const chunkBlobs: Blob[] = new Array(metadata.chunks.length);
     let completedChunks = 0;
 
@@ -292,7 +319,7 @@ class APIService {
         async () => {
           console.log(`Downloading chunk ${index + 1}/${metadata.chunks.length}`);
 
-          const response = await fetch(proxyUrl);
+          const response = await fetchWithTimeout(proxyUrl);
           
           if (!response.ok) {
             throw new Error(

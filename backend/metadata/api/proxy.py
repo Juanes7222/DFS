@@ -2,6 +2,7 @@
 API Router para operaciones de proxy de chunks.
 Permite que clientes sin acceso a ZeroTier usen el DFS.
 """
+import gzip
 import logging
 from uuid import UUID
 from typing import Optional
@@ -94,23 +95,37 @@ async def proxy_upload_chunk(
         client = context.get_http_client()
         
         try:
-            # Streaming con chunks (no carga todo en memoria)
+            # Leer chunk y comprimirlo para transferencia
             from io import BytesIO
             
-            # Para httpx con files, necesitamos BytesIO o similar
-            # Como workaround temporal, leemos el chunk completo
-            # TODO: Implementar streaming verdadero con custom content provider
             chunk_data = await file.read()
-            chunk_size = len(chunk_data)
+            original_size = len(chunk_data)
+            
+            # Comprimir con gzip para reducir transferencia por red
+            compressed_data = gzip.compress(chunk_data, compresslevel=6)
+            compressed_size = len(compressed_data)
+            compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
+            
+            logger.info(
+                f"Comprimiendo chunk {chunk_id} para transferencia: {original_size} bytes → "
+                f"{compressed_size} bytes ({compression_ratio:.1f}% reducción)"
+            )
             
             files_payload = {
-                "file": (f"chunk_{chunk_id}", BytesIO(chunk_data), "application/octet-stream")
+                "file": (f"chunk_{chunk_id}", BytesIO(compressed_data), "application/octet-stream")
+            }
+            
+            # Headers para indicar compresión
+            headers = {
+                "Content-Encoding": "gzip",
+                "X-Original-Size": str(original_size)
             }
             
             response = await client.put(
                 upload_url,
                 files=files_payload,
-                params=params
+                params=params,
+                headers=headers
             )
             
             if response.status_code not in (200, 201):
@@ -133,7 +148,8 @@ async def proxy_upload_chunk(
             return {
                 "status": "success",
                 "chunk_id": str(chunk_id),
-                "size": chunk_size,
+                "size": original_size,
+                "compressed_size": compressed_size,
                 "nodes": uploaded_nodes
             }
             
@@ -230,8 +246,7 @@ async def proxy_download_chunk(
                 
                 if response.status_code == 200:
                     logger.info(
-                        f"Chunk descargado exitosamente desde {replica.node_id[:20]}... "
-                        f"(descomprimido: {response.headers.get('X-Decompressed', 'unknown')})"
+                        f"Chunk descargado exitosamente desde {replica.node_id[:20]}..."
                     )
                     
                     # Retornar como streaming response
