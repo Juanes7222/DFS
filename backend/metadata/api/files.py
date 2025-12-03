@@ -46,14 +46,18 @@ async def upload_init(request: UploadInitRequest):
     """
     Inicia una subida de archivo.
     Devuelve un plan de chunks con targets para cada réplica.
+    El tamaño de chunk es determinado por el servidor.
     """
     logger.info(f"Upload init: {request.path}, size: {format_bytes(request.size)}")
 
     storage = get_storage()
     
     try:
+        # Usar el chunk_size configurado en el servidor
+        chunk_size = config.chunk_size
+        
         # Calcular número de chunks
-        num_chunks = (request.size + request.chunk_size - 1) // request.chunk_size
+        num_chunks = (request.size + chunk_size - 1) // chunk_size
 
         # Obtener nodos activos
         nodes = await storage.get_active_nodes()
@@ -64,12 +68,12 @@ async def upload_init(request: UploadInitRequest):
                 detail=f"Nodos insuficientes: {len(nodes)} < {config.replication_factor}",
             )
 
-        logger.info(f"Planificando {num_chunks} chunks para {request.path}")
+        logger.info(f"Planificando {num_chunks} chunks de {format_bytes(chunk_size)} para {request.path}")
 
         # Crear plan de chunks con estrategia round-robin
         chunks = []
         for i in range(num_chunks):
-            chunk_size = min(request.chunk_size, request.size - i * request.chunk_size)
+            actual_chunk_size = min(chunk_size, request.size - i * chunk_size)
 
             # Seleccionar nodos para réplicas
             target_nodes = []
@@ -78,7 +82,7 @@ async def upload_init(request: UploadInitRequest):
                 node = nodes[node_idx]
                 target_nodes.append(node.node_id)
 
-            chunk_target = await storage.create_chunk_plan(chunk_size, target_nodes)
+            chunk_target = await storage.create_chunk_plan(actual_chunk_size, target_nodes)
             chunks.append(chunk_target)
 
         # Crear metadata de archivo
@@ -90,7 +94,11 @@ async def upload_init(request: UploadInitRequest):
             f"Upload init exitoso: {request.path} (ID: {file_metadata.file_id})"
         )
 
-        return UploadInitResponse(file_id=file_metadata.file_id, chunks=chunks)
+        return UploadInitResponse(
+            file_id=file_metadata.file_id, 
+            chunks=chunks, 
+            chunk_size=chunk_size  # Informar al cliente el tamaño a usar
+        )
 
     except HTTPException:
         raise

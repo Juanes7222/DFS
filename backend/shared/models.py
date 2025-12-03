@@ -88,7 +88,6 @@ class UploadInitRequest(BaseModel):
 
     path: str
     size: int
-    chunk_size: int = 64 * 1024 * 1024  # 64MB default
 
 
 class ChunkTarget(BaseModel):
@@ -108,6 +107,7 @@ class UploadInitResponse(BaseModel):
 
     file_id: UUID
     chunks: List[ChunkTarget]
+    chunk_size: int  # Tamaño de chunk determinado por el servidor
 
 
 class ChunkCommitInfo(BaseModel):

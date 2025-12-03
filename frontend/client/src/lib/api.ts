@@ -112,9 +112,10 @@ class APIService {
     remotePath: string,
     onProgress?: (progress: number) => void
   ): Promise<void> {
-    // 1. Init upload
+    // 1. Init upload - El servidor decide el chunk_size
     const initResponse = await this.request<{
       file_id: string;
+      chunk_size: number;  // Tamaño de chunk determinado por el servidor
       chunks: Array<{
         chunk_id: string;
         size: number;
@@ -125,12 +126,12 @@ class APIService {
       body: JSON.stringify({
         path: remotePath,
         size: file.size,
-        chunk_size: 64 * 1024 * 1024, // 64MB
       }),
     });
 
-    const { file_id, chunks } = initResponse;
-    const chunkSize = 64 * 1024 * 1024;
+    const { file_id, chunks, chunk_size } = initResponse;
+
+    console.log(`Server determined chunk size: ${chunk_size} bytes`);
 
     // 2. Upload chunks via metadata service proxy
     const commitData: Array<{
@@ -141,8 +142,8 @@ class APIService {
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      const start = i * chunkSize;
-      const end = Math.min(start + chunkSize, file.size);
+      const start = i * chunk_size;
+      const end = Math.min(start + chunk_size, file.size);
       const chunkBlob = file.slice(start, end);
 
       // Calculate checksum
@@ -160,7 +161,7 @@ class APIService {
         // Upload via proxy endpoint (no need to access DataNodes directly)
         const proxyUrl = `${this.baseURL}/api/v1/proxy/chunks/${chunk.chunk_id}?target_nodes=${chunk.targets.join(",")}`;
 
-        console.log(`Uploading chunk ${i + 1}/${chunks.length} via proxy`);
+        console.log(`📤 Uploading chunk ${i + 1}/${chunks.length} via proxy (${chunkBlob.size} bytes)`);
 
         const response = await fetch(proxyUrl, {
           method: "PUT",
