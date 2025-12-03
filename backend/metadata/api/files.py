@@ -60,6 +60,20 @@ async def upload_init(request: UploadInitRequest):
     storage = get_storage()
     
     try:
+        # Verificar si el archivo ya existe
+        existing_file = await storage.get_file_by_path(request.path)
+        if existing_file:
+            # Si el archivo existe y NO se permite sobrescritura, devolver error indicando que existe
+            if not request.overwrite:
+                logger.warning(f"Archivo ya existe: {request.path}")
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"El archivo '{request.path}' ya existe. Use overwrite=true para sobrescribirlo.",
+                )
+            # Si se permite sobrescritura, eliminar el archivo existente
+            logger.info(f"Sobrescribiendo archivo existente: {request.path}")
+            await storage.delete_file(request.path, permanent=True)
+        
         # Usar el chunk_size configurado en el servidor
         chunk_size = config.chunk_size
         

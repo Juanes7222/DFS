@@ -13,7 +13,7 @@ import {
   Info
 } from "lucide-react";
 import { Eye } from "lucide-react";
-import { api, FileMetadata } from "@/lib/api";
+import { api, FileMetadata, FileExistsError } from "@/lib/api";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import DashboardLayout from "@/components/DashboardLayout";
 import { toast } from "sonner";
@@ -80,6 +80,8 @@ export default function Files() {
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
   const [previewMime, setPreviewMime] = useState<string | null>(null);
   const [previewText, setPreviewText] = useState<string | null>(null);
+  const [overwriteDialogOpen, setOverwriteDialogOpen] = useState(false);
+  const [pendingOverwrite, setPendingOverwrite] = useState<{file: File, path: string} | null>(null);
 
   useEffect(() => {
     loadFiles();
@@ -109,7 +111,7 @@ export default function Files() {
     }
   }
 
-  async function handleUpload() {
+  async function handleUpload(overwrite: boolean = false) {
     if (!selectedFile || !remotePath) {
       toast.error("Selecciona un archivo e ingresa una ruta remota");
       return;
@@ -121,19 +123,42 @@ export default function Files() {
     try {
       await api.uploadFile(selectedFile, remotePath, (progress) => {
         setUploadProgress(progress);
-      });
+      }, overwrite);
 
       toast.success("Archivo subido correctamente");
       setUploadDialogOpen(false);
       setSelectedFile(null);
       setRemotePath("");
       setUploadProgress(0);
+      setPendingOverwrite(null);
+      setUploading(false);
       loadFiles(); // Metadata siempre se consulta fresca
     } catch (err) {
+      // Si el archivo ya existe, mostrar diálogo de confirmación
+      if (err instanceof FileExistsError) {
+        setPendingOverwrite({ file: selectedFile, path: remotePath });
+        setOverwriteDialogOpen(true);
+        setUploading(false);
+        return;
+      }
+      
       toast.error(err instanceof Error ? err.message : "Error al subir el archivo");
-    } finally {
       setUploading(false);
     }
+  }
+
+  async function handleConfirmOverwrite() {
+    setOverwriteDialogOpen(false);
+    if (pendingOverwrite) {
+      // Reintentar con overwrite=true
+      await handleUpload(true);
+    }
+  }
+
+  function handleCancelOverwrite() {
+    setOverwriteDialogOpen(false);
+    setPendingOverwrite(null);
+    setUploading(false);
   }
 
   async function handleDownload(file: FileMetadata) {
@@ -500,7 +525,7 @@ export default function Files() {
                 Cancelar
               </Button>
               <Button 
-                onClick={handleUpload} 
+                onClick={() => handleUpload()} 
                 disabled={uploading || !selectedFile || !remotePath}
                 className="w-full sm:w-auto"
               >
@@ -642,6 +667,44 @@ export default function Files() {
                 </div>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog de confirmación de sobrescritura */}
+        <Dialog open={overwriteDialogOpen} onOpenChange={setOverwriteDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>¿Sobrescribir archivo?</DialogTitle>
+              <DialogDescription>
+                El archivo '{pendingOverwrite?.path}' ya existe. ¿Deseas sobrescribirlo?
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="py-4">
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Esta acción eliminará el archivo existente y lo reemplazará con el nuevo. Esta operación no se puede deshacer.
+                </AlertDescription>
+              </Alert>
+            </div>
+
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button
+                variant="outline"
+                onClick={handleCancelOverwrite}
+                className="w-full sm:w-auto"
+              >
+                Cancelar
+              </Button>
+              <Button 
+                variant="destructive"
+                onClick={handleConfirmOverwrite}
+                className="w-full sm:w-auto"
+              >
+                Sobrescribir
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

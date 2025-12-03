@@ -92,6 +92,7 @@ class UploadInitRequest(BaseModel):
     size: int
     compressed: bool = False  # Indica si el archivo viene comprimido desde el cliente
     original_size: Optional[int] = None  # Tamaño original si está comprimido
+    overwrite: bool = False  # Flag para permitir sobrescribir archivos existentes
 
 
 class ChunkTarget(BaseModel):

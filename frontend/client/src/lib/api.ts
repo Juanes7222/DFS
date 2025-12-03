@@ -168,6 +168,13 @@ async function fetchWithTimeout(
   }
 }
 
+export class FileExistsError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FileExistsError';
+  }
+}
+
 export interface FileMetadata {
   file_id: string;
   path: string;
@@ -238,6 +245,12 @@ class APIService {
 
     if (!response.ok) {
       const error = await response.text();
+      
+      // Detectar conflicto 409 (archivo ya existe)
+      if (response.status === 409) {
+        throw new FileExistsError(error);
+      }
+      
       throw new Error(`API Error: ${response.status} - ${error}`);
     }
 
@@ -262,7 +275,6 @@ class APIService {
   }
 
   async getFile(path: string): Promise<FileMetadata> {
-    // Siempre consultar metadata fresca - no usar caché
     // La metadata cambia frecuentemente (heartbeats, replicación, etc.)
     const file = await this.request<FileMetadata>(
       `/api/v1/files/${encodeURIComponent(path)}`
@@ -291,7 +303,8 @@ class APIService {
   async uploadFile(
     file: File,
     remotePath: string,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
+    overwrite: boolean = false
   ): Promise<void> {
     // Determinar si debemos comprimir
     const needsCompression = shouldCompress(file.name);
@@ -310,6 +323,12 @@ class APIService {
       );
     }
     
+    // Si es sobrescritura, invalidar caché del blob existente ANTES de subir
+    if (overwrite) {
+      metadataCache.invalidate(`blob_${remotePath}`);
+      console.log(`Cache invalidated for overwrite: blob_${remotePath}`);
+    }
+    
     // 1. Init upload - El servidor decide el chunk_size
     const initResponse = await this.request<{
       file_id: string;
@@ -326,6 +345,7 @@ class APIService {
         size: fileToUpload.size, // Tamaño después de compresión
         compressed: needsCompression,
         original_size: needsCompression ? originalSize : undefined,
+        overwrite: overwrite,
       }),
     });
 
