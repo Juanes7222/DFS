@@ -12,6 +12,7 @@ import {
   Loader2,
   Info
 } from "lucide-react";
+import { Eye } from "lucide-react";
 import { api, FileMetadata } from "@/lib/api";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -73,6 +74,12 @@ export default function Files() {
   const [remotePath, setRemotePath] = useState("");
   const [selectedFileInfo, setSelectedFileInfo] = useState<FileMetadata | null>(null);
   const [infoDialogOpen, setInfoDialogOpen] = useState(false);
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewMime, setPreviewMime] = useState<string | null>(null);
+  const [previewText, setPreviewText] = useState<string | null>(null);
 
   useEffect(() => {
     loadFiles();
@@ -170,6 +177,76 @@ export default function Files() {
     setInfoDialogOpen(true);
   }
 
+  function getMimeFromExtension(path: string): string | null {
+    const ext = getFileFormat(path).toLowerCase();
+    if (ext === "—") return null;
+    const map: Record<string, string> = {
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif",
+      webp: "image/webp",
+      svg: "image/svg+xml",
+      pdf: "application/pdf",
+      txt: "text/plain",
+      md: "text/markdown",
+      csv: "text/csv",
+      json: "application/json",
+      mp4: "video/mp4",
+      mp3: "audio/mpeg",
+    };
+    return map[ext] || null;
+  }
+
+  async function handlePreview(file: FileMetadata) {
+    setSelectedFileInfo(file);
+    setPreviewDialogOpen(true);
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewBlobUrl(null);
+    setPreviewMime(null);
+    setPreviewText(null);
+
+    try {
+      const blob = await api.downloadFile(file.path, (p) => {
+        // Podría mostrar avances si se desea
+      });
+
+      const mimeFromBlob = blob.type || getMimeFromExtension(file.path) || "application/octet-stream";
+      const url = URL.createObjectURL(blob);
+      setPreviewBlobUrl(url);
+      setPreviewMime(mimeFromBlob);
+
+      // Si es similar a texto, simplemente lo carga
+      if (mimeFromBlob.startsWith("text/") || mimeFromBlob === "application/json" || mimeFromBlob === "text/markdown") {
+        try {
+          const txt = await blob.text();
+          setPreviewText(txt);
+        } catch (e) {
+          // Ignora el error de análisis del texto
+        }
+      }
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : "Error al cargar la vista previa");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!previewDialogOpen && previewBlobUrl) {
+      try {
+        URL.revokeObjectURL(previewBlobUrl);
+      } catch (e) {
+        // Ignorado
+      }
+      setPreviewBlobUrl(null);
+      setPreviewMime(null);
+      setPreviewText(null);
+      setPreviewError(null);
+    }
+  }, [previewDialogOpen]);
+
   return (
     <DashboardLayout>
       <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -266,6 +343,13 @@ export default function Files() {
                               <Button
                                 variant="ghost"
                                 size="sm"
+                                onClick={() => handlePreview(file)}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => showFileInfo(file)}
                               >
                                 <Info className="h-4 w-4" />
@@ -319,10 +403,10 @@ export default function Files() {
                           variant="outline"
                           size="sm"
                           className="flex-1"
-                          onClick={() => showFileInfo(file)}
+                          onClick={() => handlePreview(file)}
                         >
-                          <Info className="h-4 w-4 mr-2" />
-                          Info
+                          <Eye className="h-4 w-4 mr-2" />
+                          Vista
                         </Button>
                         <Button
                           variant="outline"
@@ -431,6 +515,74 @@ export default function Files() {
                     Subir
                   </>
                 )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog de vista previa del archivo */}
+        <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
+          <DialogContent className="max-w-full sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Vista previa</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {previewLoading ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <p className="text-sm text-muted-foreground mt-3">Cargando vista previa...</p>
+                </div>
+              ) : previewError ? (
+                <Alert variant="destructive">
+                  <AlertDescription>{previewError}</AlertDescription>
+                </Alert>
+              ) : previewBlobUrl && previewMime ? (
+                <div>
+                  {previewMime.startsWith("image/") && (
+                    <div className="flex items-center justify-center">
+                      <img src={previewBlobUrl} alt="preview" className="max-h-[70vh] w-auto max-w-full object-contain" />
+                    </div>
+                  )}
+
+                  {previewMime === "application/pdf" && (
+                    <iframe src={previewBlobUrl} title="pdf-preview" className="w-full h-[80vh] border-0" />
+                  )}
+
+                  {previewMime.startsWith("text/") || previewMime === "application/json" || previewText ? (
+                    <div className="max-h-[70vh] overflow-auto bg-muted p-4 rounded">
+                      <pre className="whitespace-pre-wrap text-sm text-foreground">{previewText}</pre>
+                    </div>
+                  ) : null}
+
+                  {previewMime.startsWith("video/") && (
+                    <video controls src={previewBlobUrl} className="w-full max-h-[70vh]" />
+                  )}
+
+                  {previewMime.startsWith("audio/") && (
+                    <audio controls src={previewBlobUrl} className="w-full" />
+                  )}
+
+                  {/* si no es ninguno de los anteriores */}
+                  {!previewMime.startsWith("image/") && previewMime !== "application/pdf" && !previewMime.startsWith("text/") && !previewMime.startsWith("video/") && !previewMime.startsWith("audio/") && (
+                    <div className="p-4 bg-muted rounded">
+                      <p className="text-sm text-muted-foreground">No es posible visualizar este formato de archivo.</p>
+                      <p className="text-sm text-muted-foreground">Descarga el archivo para abrirlo localmente.</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center text-sm text-muted-foreground">No hay vista previa disponible</div>
+              )}
+            </div>
+
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button variant="outline" onClick={() => setPreviewDialogOpen(false)} className="w-full sm:w-auto">Cerrar</Button>
+              <Button
+                onClick={() => selectedFileInfo && handleDownload(selectedFileInfo)}
+                className="w-full sm:w-auto"
+              >
+                Descargar
               </Button>
             </DialogFooter>
           </DialogContent>
