@@ -1,4 +1,5 @@
 import asyncio
+import gzip
 import logging
 import shutil
 from pathlib import Path
@@ -30,38 +31,49 @@ class ChunkStorage(ChunkStorageProtocol):
     async def store_chunk(
         self, chunk_id: UUID, chunk_data: bytes, replicate_to: Optional[str] = None
     ) -> dict:
-        """Almacena un chunk con replicación en pipeline"""
+        """Almacena un chunk con replicación en pipeline y compresión"""
         async with self.lock:
             chunk_path = self.storage_path / f"{chunk_id}.chunk"
             checksum_path = self.storage_path / f"{chunk_id}.checksum"
 
             try:
-                # Calcular y guardar checksum
+                # Calcular checksum del dato original (antes de comprimir)
                 checksum = calculate_checksum(chunk_data)
+                original_size = len(chunk_data)
+                
+                # Comprimir chunk con gzip (nivel 6 = balance velocidad/compresión)
+                compressed_data = gzip.compress(chunk_data, compresslevel=6)
+                compressed_size = len(compressed_data)
+                compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
 
-                # Guardar chunk localmente
+                # Guardar chunk comprimido localmente
                 with open(chunk_path, "wb") as f:
-                    f.write(chunk_data)
+                    f.write(compressed_data)
 
-                # Guardar checksum
+                # Guardar checksum del dato original
                 with open(checksum_path, "w") as f:
                     f.write(checksum)
 
-                logger.info(f"Chunk almacenado: {chunk_id}, size: {len(chunk_data)}")
+                logger.info(
+                    f"Chunk almacenado: {chunk_id}, size: {original_size} bytes → "
+                    f"{compressed_size} bytes (compresión: {compression_ratio:.1f}%)"
+                )
 
-                # Pipeline replication
+                # Pipeline replication con datos comprimidos
                 replicated_nodes = [self._get_node_id()]
                 if replicate_to:
                     replicated_nodes.extend(
                         await self._replicate_to_nodes(
-                            chunk_id, chunk_data, replicate_to
+                            chunk_id, compressed_data, replicate_to
                         )
                     )
 
                 return {
                     "status": "stored",
                     "chunk_id": str(chunk_id),
-                    "size": len(chunk_data),
+                    "size": original_size,
+                    "compressed_size": compressed_size,
+                    "compression_ratio": f"{compression_ratio:.1f}%",
                     "checksum": checksum,
                     "node_id": self._get_node_id(),
                     "nodes": replicated_nodes,
@@ -76,7 +88,7 @@ class ChunkStorage(ChunkStorageProtocol):
                 raise DFSStorageError(f"Error almacenando chunk {chunk_id}: {e}")
 
     async def retrieve_chunk(self, chunk_id: UUID) -> Tuple[bytes, str]:
-        """Recupera un chunk y verifica su checksum"""
+        """Recupera un chunk, lo descomprime y verifica su checksum"""
         chunk_path = self.storage_path / f"{chunk_id}.chunk"
         checksum_path = self.storage_path / f"{chunk_id}.checksum"
 
@@ -84,11 +96,20 @@ class ChunkStorage(ChunkStorageProtocol):
             raise DFSStorageError(f"Chunk no encontrado: {chunk_id}")
 
         try:
-            # Lee el chunk
+            # Lee el chunk (posiblemente comprimido)
             with open(chunk_path, "rb") as f:
-                chunk_data = f.read()
+                stored_data = f.read()
 
-            # Verifica el checksum
+            # Intentar descomprimir (compatibilidad con chunks legacy)
+            try:
+                chunk_data = gzip.decompress(stored_data)
+                logger.debug(f"Chunk {chunk_id} descomprimido: {len(stored_data)} → {len(chunk_data)} bytes")
+            except gzip.BadGzipFile:
+                # Si falla, asumir que es un chunk sin comprimir (legacy)
+                chunk_data = stored_data
+                logger.debug(f"Chunk {chunk_id} sin compresión (legacy)")
+
+            # Verifica el checksum del dato descomprimido
             calculated_checksum = calculate_checksum(chunk_data)
 
             if checksum_path.exists():
@@ -125,7 +146,11 @@ class ChunkStorage(ChunkStorageProtocol):
     async def _replicate_to_nodes(
         self, chunk_id: UUID, chunk_data: bytes, replicate_to: str
     ) -> List[str]:
-        """Replica el chunk a los nodos en pipeline (host:port|host:port)"""
+        """Replica el chunk a los nodos en pipeline (host:port|host:port)
+        
+        Args:
+            chunk_data: Datos del chunk (ya comprimidos si compression está habilitada)
+        """
         replicated_nodes = []
         
         if not replicate_to or not replicate_to.strip():

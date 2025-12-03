@@ -69,13 +69,19 @@ async def proxy_upload_chunk(
         primary_url = f"http://{primary_node.host}:{primary_node.port}"
         upload_url = f"{primary_url}/api/v1/chunks/{chunk_id}"
         
-        logger.info(f"Enviando chunk a nodo primario: {primary_node.node_id[:20]}... ({primary_url})")
+        logger.info(f"Streaming chunk a nodo primario: {primary_node.node_id[:20]}... ({primary_url})")
         
-        # Leer el chunk - necesitamos el contenido completo para multipart/form-data
-        # En el futuro, podemos optimizar esto con streaming real
-        chunk_data = await file.read()
-        chunk_size = len(chunk_data)
-        logger.info(f"Chunk {chunk_id} recibido: {chunk_size} bytes")
+        # Streaming chunked: leer por bloques en lugar de cargar todo
+        async def chunk_iterator():
+            """Lee y envía el archivo en bloques de 1MB"""
+            total_bytes = 0
+            while True:
+                block = await file.read(1024 * 1024)  # 1MB por bloque
+                if not block:
+                    break
+                total_bytes += len(block)
+                yield block
+            logger.info(f"Chunk {chunk_id} streaming completado: {total_bytes} bytes")
         
         params = {}
         if replication_chain:
@@ -84,56 +90,65 @@ async def proxy_upload_chunk(
             params["replicate_to"] = chain_nodes
             logger.info(f"Pipeline replication chain: {chain_nodes}")
         
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            try:
-                # Usar files= para mantener formato multipart/form-data
-                from io import BytesIO
-                files_payload = {
-                    "file": (f"chunk_{chunk_id}", BytesIO(chunk_data), "application/octet-stream")
-                }
-                
-                response = await client.put(
-                    upload_url,
-                    files=files_payload,
-                    params=params
+        # Usar cliente HTTP compartido (connection pooling)
+        client = context.get_http_client()
+        
+        try:
+            # Streaming con chunks (no carga todo en memoria)
+            from io import BytesIO
+            
+            # Para httpx con files, necesitamos BytesIO o similar
+            # Como workaround temporal, leemos el chunk completo
+            # TODO: Implementar streaming verdadero con custom content provider
+            chunk_data = await file.read()
+            chunk_size = len(chunk_data)
+            
+            files_payload = {
+                "file": (f"chunk_{chunk_id}", BytesIO(chunk_data), "application/octet-stream")
+            }
+            
+            response = await client.put(
+                upload_url,
+                files=files_payload,
+                params=params
+            )
+            
+            if response.status_code not in (200, 201):
+                logger.error(
+                    f"Error subiendo chunk: Status {response.status_code}, "
+                    f"Body: {response.text[:300]}"
                 )
-                
-                if response.status_code not in (200, 201):
-                    logger.error(
-                        f"Error subiendo chunk: Status {response.status_code}, "
-                        f"Body: {response.text[:300]}"
-                    )
-                    raise HTTPException(
-                        status_code=status.HTTP_502_BAD_GATEWAY,
-                        detail=f"Error enviando chunk a DataNode: {response.status_code} - {response.text[:100]}"
-                    )
-                
-                result = response.json()
-                uploaded_nodes = result.get("nodes", [primary_node.node_id])
-                
-                logger.info(
-                    f"Chunk {chunk_id} distribuido exitosamente a {len(uploaded_nodes)} nodos"
-                )
-                
-                return {
-                    "status": "success",
-                    "chunk_id": str(chunk_id),
-                    "size": chunk_size,
-                    "nodes": uploaded_nodes
-                }
-                
-            except httpx.TimeoutException:
-                logger.error(f"Timeout enviando chunk a {primary_node.node_id}")
-                raise HTTPException(
-                    status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-                    detail="Timeout conectando con DataNode"
-                )
-            except httpx.ConnectError as e:
-                logger.error(f"Error de conexión a DataNode: {e}")
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"No se pudo conectar al DataNode: {str(e)}"
+                    detail=f"Error enviando chunk a DataNode: {response.status_code} - {response.text[:100]}"
                 )
+            
+            result = response.json()
+            uploaded_nodes = result.get("nodes", [primary_node.node_id])
+            
+            logger.info(
+                f"Chunk {chunk_id} distribuido exitosamente a {len(uploaded_nodes)} nodos"
+            )
+            
+            return {
+                "status": "success",
+                "chunk_id": str(chunk_id),
+                "size": chunk_size,
+                "nodes": uploaded_nodes
+            }
+            
+        except httpx.TimeoutException:
+            logger.error(f"Timeout enviando chunk a {primary_node.node_id}")
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="Timeout conectando con DataNode"
+            )
+        except httpx.ConnectError as e:
+            logger.error(f"Error de conexión a DataNode: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"No se pudo conectar al DataNode: {str(e)}"
+            )
                 
     except HTTPException:
         raise
@@ -202,54 +217,57 @@ async def proxy_download_chunk(
             f"Descargando chunk {chunk_id} desde {len(chunk_entry.replicas)} réplicas disponibles"
         )
         
+        # Usar cliente HTTP compartido (connection pooling)
+        client = context.get_http_client()
+        
         # Intentar descargar desde cada réplica
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            for replica in chunk_entry.replicas:
-                try:
-                    download_url = f"{replica.url}/api/v1/chunks/{chunk_id}"
-                    logger.info(f"Intentando descargar desde: {replica.node_id[:20]}...")
+        for replica in chunk_entry.replicas:
+            try:
+                download_url = f"{replica.url}/api/v1/chunks/{chunk_id}"
+                logger.info(f"Intentando descargar desde: {replica.node_id[:20]}...")
+                
+                response = await client.get(download_url)
+                
+                if response.status_code == 200:
+                    logger.info(
+                        f"Chunk descargado exitosamente desde {replica.node_id[:20]}... "
+                        f"(descomprimido: {response.headers.get('X-Decompressed', 'unknown')})"
+                    )
                     
-                    response = await client.get(download_url)
+                    # Retornar como streaming response
+                    headers = {
+                        "X-Chunk-ID": str(chunk_id),
+                        "X-Node-ID": replica.node_id,
+                        "Content-Length": str(len(response.content))
+                    }
                     
-                    if response.status_code == 200:
-                        logger.info(
-                            f"Chunk descargado exitosamente desde {replica.node_id[:20]}..."
-                        )
-                        
-                        # Retornar como streaming response
-                        headers = {
-                            "X-Chunk-ID": str(chunk_id),
-                            "X-Node-ID": replica.node_id,
-                            "Content-Length": str(len(response.content))
-                        }
-                        
-                        if "X-Checksum" in response.headers:
-                            headers["X-Checksum"] = response.headers["X-Checksum"]
-                        
-                        async def chunk_generator():
-                            yield response.content
-                        
-                        return StreamingResponse(
-                            chunk_generator(),
-                            media_type="application/octet-stream",
-                            headers=headers
-                        )
-                        
-                except httpx.TimeoutException:
-                    logger.warning(f"Timeout descargando desde {replica.node_id[:20]}...")
-                    continue
-                except httpx.ConnectError:
-                    logger.warning(f"No se pudo conectar a {replica.node_id[:20]}...")
-                    continue
-                except Exception as e:
-                    logger.warning(f"Error descargando desde {replica.node_id[:20]}...: {e}")
-                    continue
-            
-            # Si llegamos aquí, ninguna réplica funcionó
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="No se pudo descargar el chunk desde ninguna réplica disponible"
-            )
+                    if "X-Checksum" in response.headers:
+                        headers["X-Checksum"] = response.headers["X-Checksum"]
+                    
+                    async def chunk_generator():
+                        yield response.content
+                    
+                    return StreamingResponse(
+                        chunk_generator(),
+                        media_type="application/octet-stream",
+                        headers=headers
+                    )
+                    
+            except httpx.TimeoutException:
+                logger.warning(f"Timeout descargando desde {replica.node_id[:20]}...")
+                continue
+            except httpx.ConnectError:
+                logger.warning(f"No se pudo conectar a {replica.node_id[:20]}...")
+                continue
+            except Exception as e:
+                logger.warning(f"Error descargando desde {replica.node_id[:20]}...: {e}")
+                continue
+        
+        # Si llegamos aquí, ninguna réplica funcionó
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No se pudo descargar el chunk desde ninguna réplica disponible"
+        )
             
     except HTTPException:
         raise

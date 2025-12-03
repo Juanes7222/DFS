@@ -160,6 +160,7 @@ class DataNodeServer:
                         "X-Chunk-ID": str(chunk_id),
                         "X-Checksum": checksum,
                         "Content-Length": str(len(chunk_data)),
+                        "X-Decompressed": "true",  # Indica que ya está descomprimido
                     },
                 )
                 

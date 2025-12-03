@@ -93,6 +93,14 @@ class ServiceManager:
             except Exception as e:
                 logger.error(f"Error deteniendo Replication Manager: {e}")
 
+        # Cierra cliente HTTP compartido
+        try:
+            from metadata import context
+            await context.close_http_client()
+            logger.info("Cliente HTTP cerrado")
+        except Exception as e:
+            logger.error(f"Error cerrando cliente HTTP: {e}")
+
         # Cerra storage
         if self.storage:
             try:
