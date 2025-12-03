@@ -231,6 +231,25 @@ class PostgresMetadataStorage(MetadataStorageBase):
                     ]
                     chunk_map = {str(c.chunk_id): c for c in chunk_entries}
 
+                    # Obtener información de nodos para construir URLs correctas
+                    node_info_map = {}
+                    for commit_info in chunks:
+                        for node_id in commit_info.nodes:
+                            if node_id not in node_info_map:
+                                node_row = await conn.fetchrow(
+                                    "SELECT host, port, zerotier_ip FROM nodes WHERE node_id = $1",
+                                    node_id
+                                )
+                                if node_row:
+                                    # Usar zerotier_ip si está disponible, sino host
+                                    host = node_row["zerotier_ip"] or node_row["host"]
+                                    port = node_row["port"]
+                                    # Filtrar IPs inválidas
+                                    if host and host != "0.0.0.0" and host != "unknown":
+                                        node_info_map[node_id] = f"http://{host}:{port}"
+                                    else:
+                                        logger.warning(f"Nodo {node_id} tiene IP inválida: {host}, ignorando")
+
                     for commit_info in chunks:
                         chunk_id_str = str(commit_info.chunk_id)
                         if chunk_id_str in chunk_map:
@@ -239,14 +258,18 @@ class PostgresMetadataStorage(MetadataStorageBase):
 
                             chunk.replicas = []
                             for node_id in commit_info.nodes:
-                                replica = ReplicaInfo(
-                                    node_id=node_id,
-                                    url=self._node_id_to_url(node_id),
-                                    state=ChunkState.COMMITTED,
-                                    last_heartbeat=datetime.now(timezone.utc),
-                                    checksum_verified=True,
-                                )
-                                chunk.replicas.append(replica)
+                                # Solo crear réplica si el nodo tiene URL válida
+                                if node_id in node_info_map:
+                                    replica = ReplicaInfo(
+                                        node_id=node_id,
+                                        url=node_info_map[node_id],
+                                        state=ChunkState.COMMITTED,
+                                        last_heartbeat=datetime.now(timezone.utc),
+                                        checksum_verified=True,
+                                    )
+                                    chunk.replicas.append(replica)
+                                else:
+                                    logger.warning(f"No se encontró URL válida para nodo {node_id}, réplica ignorada")
 
                     chunks_json = json.dumps(
                         [c.model_dump(mode="json") for c in chunk_entries]

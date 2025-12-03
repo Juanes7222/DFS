@@ -30,7 +30,8 @@ class MetadataStorageBase(ABC):
     
     @abstractmethod
     async def create_file_metadata(
-        self, path: str, size: int, chunks: List[ChunkTarget]
+        self, path: str, size: int, chunks: List[ChunkTarget],
+        compressed: bool = False, original_size: Optional[int] = None
     ) -> FileMetadata:
         """Crea metadata de archivo"""
         pass
